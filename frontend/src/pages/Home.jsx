@@ -429,8 +429,9 @@ function HeroSection({ services, barbers, openBooking }) {
   const mTextRef  = useRef(null);  // paragraph — slides from left
 
   // Preload state
-  const [loaded, setLoaded]   = useState(false);   // all frames decoded?
-  const [progress, setProgress] = useState(0);     // 0..100 for the loader
+  const [loaded,    setLoaded]    = useState(false); // all 65 frames decoded
+  const [gsapReady, setGsapReady] = useState(false); // GSAP pin spacer in place
+  const [progress,  setProgress]  = useState(0);     // 0–100 for the loader bar
 
   // ── 1. PRELOAD ALL FRAMES (gate everything behind this) ──────────────────
   useEffect(() => {
@@ -457,16 +458,14 @@ function HeroSection({ services, barbers, openBooking }) {
     return () => { cancelled = true; };
   }, []);
 
-  // ── 2. Lock body scroll while loading — useLayoutEffect fires before paint,
-  //       so the user never sees a single frame without the lock in place. ────
+  // ── 2. Lock body scroll until GSAP pin spacer is in place ──────────────────
+  //    useLayoutEffect fires BEFORE paint — no frame is ever shown without the lock.
   useLayoutEffect(() => {
+    const allReady = loaded && gsapReady;
     window.scrollTo(0, 0);
-    document.body.style.overflow = "hidden";
-    if (!loaded) return;
-    document.body.style.overflow = "";
-    window.scrollTo(0, 0);
+    document.body.style.overflow = allReady ? "" : "hidden";
     return () => { document.body.style.overflow = ""; };
-  }, [loaded]);
+  }, [loaded, gsapReady]);
 
   // ── 3. Once loaded: draw frame 0 + init GSAP ScrollTrigger ───────────────
   useEffect(() => {
@@ -594,8 +593,10 @@ function HeroSection({ services, barbers, openBooking }) {
     }, sectionRef);
 
     ScrollTrigger.refresh();
-    // After GSAP adds its pin-spacer + recalculates positions, anchor to true top
+    // Pin spacer is now in the DOM and all positions are calculated.
+    // Reset scroll to absolute top, then signal that the loader can go away.
     window.scrollTo(0, 0);
+    setGsapReady(true);
 
     return () => {
       gsap.ticker.remove(tickerFn);
@@ -624,10 +625,10 @@ function HeroSection({ services, barbers, openBooking }) {
       {/* Dim overlay */}
       <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1 }} />
 
-      {/* ── LOADING OVERLAY — fixed, covers the ENTIRE page (including z-20 site-body)
-               until all frames are decoded. Prevents the -300vh margin from exposing
-               the site-body content before the GSAP pin spacer is in place. ── */}
-      {!loaded && (
+      {/* ── LOADING OVERLAY — stays until frames are decoded AND GSAP has placed
+               its pin spacer. Hiding only on `loaded` left a one-frame window
+               where the site-body (marginTop:-300vh, no spacer yet) was visible. ── */}
+      {(!loaded || !gsapReady) && (
         <div
           data-testid="hero-loader"
           style={{

@@ -31,6 +31,11 @@
               window.history.scrollRestoration = 'manual';
             }
             window.scrollTo(0, 0);
+            // Handle bfcache (back/forward navigation) — the browser may resurrect
+            // the page at a non-zero scroll position even with scrollRestoration:manual.
+            window.addEventListener('pageshow', function(e) {
+              if (e.persisted) { window.scrollTo(0, 0); }
+            });
           })();
         </script>
         <script>window.addEventListener("error",function(e){if(e.error instanceof DOMException&&e.error.name==="DataCloneError"&&e.message&&e.message.includes("PerformanceServerTiming")){e.stopImmediatePropagation();e.preventDefault()}},true);</script>
