@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import axios from "axios";
 import { ChevronsRight, ArrowUpRight, ArrowRight, Phone, Mail, MapPin, Instagram, Sparkles } from "lucide-react";
 import Reveal from "@/components/Reveal";
@@ -625,14 +626,14 @@ function HeroSection({ services, barbers, openBooking }) {
       {/* Dim overlay */}
       <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1 }} />
 
-      {/* ── LOADING OVERLAY — stays until frames are decoded AND GSAP has placed
-               its pin spacer. Hiding only on `loaded` left a one-frame window
-               where the site-body (marginTop:-300vh, no spacer yet) was visible. ── */}
-      {(!loaded || !gsapReady) && (
+      {/* ── LOADING OVERLAY — rendered via portal to document.body so it sits at
+               the ROOT stacking context (z:9999) and cannot be buried by the
+               site-body's z-[20], which beats the hero wrapper's z-1 context. ── */}
+      {(!loaded || !gsapReady) && createPortal(
         <div
           data-testid="hero-loader"
           style={{
-            position: "fixed", inset: 0, zIndex: 100, background: "#000",
+            position: "fixed", inset: 0, zIndex: 9999, background: "#000",
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1.5rem",
           }}
         >
@@ -645,7 +646,8 @@ function HeroSection({ services, barbers, openBooking }) {
           <div className="font-mono text-white/40" style={{ fontSize: "0.62rem", letterSpacing: "0.2em" }}>
             {progress}%
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Content overlay — single absolute container, flex-column inside */}
