@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import axios from "axios";
 import { ChevronsRight, ArrowUpRight, ArrowRight, Phone, Mail, MapPin, Instagram, Sparkles } from "lucide-react";
 import Reveal from "@/components/Reveal";
@@ -457,16 +457,14 @@ function HeroSection({ services, barbers, openBooking }) {
     return () => { cancelled = true; };
   }, []);
 
-  // ── 2. Lock body scroll while loading; force top on unlock ─────────────────
-  useEffect(() => {
-    if (!loaded) {
-      window.scrollTo(0, 0);
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-      // Ensure we start at the very top once GSAP takes over
-      window.scrollTo(0, 0);
-    }
+  // ── 2. Lock body scroll while loading — useLayoutEffect fires before paint,
+  //       so the user never sees a single frame without the lock in place. ────
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+    document.body.style.overflow = "hidden";
+    if (!loaded) return;
+    document.body.style.overflow = "";
+    window.scrollTo(0, 0);
     return () => { document.body.style.overflow = ""; };
   }, [loaded]);
 
