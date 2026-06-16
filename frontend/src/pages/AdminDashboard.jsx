@@ -1,1115 +1,1023 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast, Toaster } from "sonner";
-import { LogOut, Trash2, Edit, Loader2, Calendar, User, Scissors, Clock, Plus, X, TrendingUp, DollarSign, Users, CalendarCheck, Instagram } from "lucide-react";
+import {
+  LayoutDashboard, CalendarDays, Scissors, Users, Clock,
+  CalendarCheck, Instagram, LogOut, Menu, X, Plus, Edit2,
+  Trash2, Loader2, Search, Check, TrendingUp, DollarSign,
+  ChevronRight, Star, Phone, Mail, AlertCircle, RefreshCw,
+} from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const authH = (t) => ({ Authorization: `Bearer ${t}` });
 
+// ─── NAV ITEMS ───────────────────────────────────────────────────────────────
+const NAV = [
+  { id: "overview",   label: "Overview",       icon: LayoutDashboard },
+  { id: "bookings",   label: "Bookings",        icon: CalendarDays },
+  { id: "daily",      label: "Today",           icon: Clock },
+  { id: "services",   label: "Services",        icon: Scissors },
+  { id: "barbers",    label: "Barbers",         icon: Users },
+  { id: "schedules",  label: "Availability",    icon: CalendarCheck },
+  { id: "instagram",  label: "Instagram",       icon: Instagram },
+];
+
+// ─── ROOT ────────────────────────────────────────────────────────────────────
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState("overview");
-  const [bookings, setBookings] = useState([]);
-  const [services, setServices] = useState([]);
-  const [barbers, setBarbers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [tab, setTab]         = useState("overview");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [bookings, setBookings]       = useState([]);
+  const [services, setServices]       = useState([]);
+  const [barbers, setBarbers]         = useState([]);
+  const [loading, setLoading]         = useState(true);
   const navigate = useNavigate();
-
   const token = localStorage.getItem("admin_token");
 
   useEffect(() => {
-    if (!token) {
-      navigate("/admin");
-      return;
-    }
-    fetchAllData();
+    if (!token) { navigate("/admin"); return; }
+    load();
+  }, []); // eslint-disable-line
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const h = authH(token);
+      const [b, s, ba] = await Promise.all([
+        axios.get(`${API}/admin/bookings`, { headers: h }),
+        axios.get(`${API}/admin/services`,  { headers: h }),
+        axios.get(`${API}/admin/barbers`,   { headers: h }),
+      ]);
+      setBookings(b.data); setServices(s.data); setBarbers(ba.data);
+    } catch (err) {
+      if (err?.response?.status === 401) { localStorage.removeItem("admin_token"); navigate("/admin"); }
+      else toast.error("Failed to load data");
+    } finally { setLoading(false); }
   }, [token, navigate]);
 
-  const fetchAllData = async () => {
-    setLoading(true);
-    try {
-      const headers = { Authorization: `Bearer ${token}` };
-      const [bookingsRes, servicesRes, barbersRes] = await Promise.all([
-        axios.get(`${API}/admin/bookings`, { headers }),
-        axios.get(`${API}/admin/services`, { headers }),
-        axios.get(`${API}/admin/barbers`, { headers })
-      ]);
-      setBookings(bookingsRes.data);
-      setServices(servicesRes.data);
-      setBarbers(barbersRes.data);
-    } catch (error) {
-      if (error?.response?.status === 401) {
-        localStorage.removeItem("admin_token");
-        navigate("/admin");
-        toast.error("Session expired");
-      } else {
-        toast.error("Failed to load data");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLogout = () => {
+  const logout = () => {
     localStorage.removeItem("admin_token");
     navigate("/admin");
-    toast.success("Logged out successfully");
   };
 
-  const confirmedBookings = bookings.filter((b) => b.status === "confirmed");
-  const todayBookings = confirmedBookings.filter((b) => b.date === new Date().toISOString().split('T')[0]);
-  const totalRevenue = confirmedBookings.reduce((sum, b) => sum + b.price, 0);
+  const confirmed = bookings.filter(b => b.status === "confirmed");
+  const today     = new Date().toISOString().split("T")[0];
+  const todayB    = confirmed.filter(b => b.date === today);
+  const revenue   = confirmed.reduce((s, b) => s + b.price, 0);
+
+  const ActiveTab = {
+    overview:  () => <OverviewTab  bookings={confirmed} services={services} barbers={barbers} revenue={revenue} todayB={todayB} />,
+    bookings:  () => <BookingsTab  bookings={bookings}  token={token} onRefresh={load} />,
+    daily:     () => <DailyTab     bookings={bookings}  barbers={barbers} />,
+    services:  () => <ServicesTab  services={services}  token={token} onRefresh={load} />,
+    barbers:   () => <BarbersTab   barbers={barbers}    services={services} token={token} onRefresh={load} />,
+    schedules: () => <SchedulesTab barbers={barbers}    token={token} />,
+    instagram: () => <InstagramTab token={token}        onRefresh={load} />,
+  }[tab] || (() => null);
+
+  const currentNav = NAV.find(n => n.id === tab);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-10 px-5">
-      <Toaster theme="light" position="top-center" />
+    <div className="flex h-screen bg-[#F5F5F7] overflow-hidden" style={{ fontFamily: "'Manrope', system-ui, sans-serif" }} data-testid="admin-dashboard">
+      <Toaster theme="light" position="top-right" />
 
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="rounded-2xl overflow-hidden shadow-lg border border-gray-200 bg-gradient-to-br from-[#1D1D1F] to-[#333] text-white p-6 md:p-8 flex items-center justify-between mb-8">
-          <div>
-            <h1 className="title-massive text-3xl md:text-5xl" data-testid="admin-dashboard-title">
-              Admin Dashboard<span className="text-white/80">.</span>
-            </h1>
-            <p className="mt-2 text-white/85">Manage your barbershop</p>
-          </div>
-          <button
-            onClick={handleLogout}
-            data-testid="admin-logout-btn"
-            className="px-4 py-2 bg-black hover:bg-gray-900 text-white rounded-lg font-display uppercase text-xs transition-all shadow-lg flex items-center gap-2"
-          >
-            <LogOut size={16} /> Logout
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-2 mb-8 overflow-x-auto">
-          {[
-            { id: "overview", label: "Overview", icon: TrendingUp },
-            { id: "daily", label: "Daily Schedule", icon: CalendarCheck },
-            { id: "bookings", label: "Bookings", count: bookings.length },
-            { id: "services", label: "Services", count: services.length },
-            { id: "barbers", label: "Barbers", count: barbers.length },
-            { id: "schedules", label: "Availability", count: 0 },
-            { id: "instagram", label: "Instagram", icon: Instagram }
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-6 py-3 rounded-xl font-display uppercase text-sm transition-all whitespace-nowrap flex items-center gap-2 ${
-                activeTab === tab.id
-                  ? "bg-[#1D1D1F] text-white shadow-[0_4px_14px_rgba(0,0,0,0.10)]"
-                  : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"
-              }`}
-            >
-              {tab.icon && <tab.icon size={16} />}
-              {tab.label} {tab.count !== undefined && `(${tab.count})`}
-            </button>
-          ))}
-        </div>
-
-        {/* Content */}
-        {loading ? (
-          <div className="p-12 text-center bg-white rounded-2xl">
-            <Loader2 size={32} className="animate-spin mx-auto text-[#A1A1A6]" />
-            <p className="mt-4 text-gray-500">Loading...</p>
-          </div>
-        ) : (
-          <>
-            {activeTab === "overview" && <OverviewTab bookings={confirmedBookings} services={services} barbers={barbers} totalRevenue={totalRevenue} todayBookings={todayBookings} />}
-            {activeTab === "daily" && <DailyScheduleTab bookings={bookings} barbers={barbers} services={services} token={token} onRefresh={fetchAllData} />}
-            {activeTab === "bookings" && <BookingsTab bookings={bookings} token={token} onRefresh={fetchAllData} />}
-            {activeTab === "services" && <ServicesTab services={services} token={token} onRefresh={fetchAllData} />}
-            {activeTab === "barbers" && <BarbersTab barbers={barbers} services={services} token={token} onRefresh={fetchAllData} />}
-            {activeTab === "schedules" && <SchedulesTab barbers={barbers} token={token} onRefresh={fetchAllData} />}
-            {activeTab === "instagram" && <InstagramTab token={token} onRefresh={fetchAllData} />}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Instagram Tab Component
-function InstagramTab({ token, onRefresh }) {
-  const [posts, setPosts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [isCreating, setIsCreating] = useState(false);
-  const [editingPost, setEditingPost] = useState(null);
-  const [formData, setFormData] = useState({ image_url: "", caption: "", post_url: "" });
-
-  useEffect(() => {
-    loadPosts();
-  }, []);
-
-  const loadPosts = async () => {
-    setLoading(true);
-    try {
-      const { data } = await axios.get(`${API}/admin/instagram-posts`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setPosts(data);
-    } catch (error) {
-      toast.error("Failed to load Instagram posts");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const openCreateDialog = () => {
-    setFormData({ image_url: "", caption: "", post_url: "" });
-    setIsCreating(true);
-  };
-
-  const openEditDialog = (post) => {
-    setFormData({ image_url: post.image_url, caption: post.caption || "", post_url: post.post_url || "" });
-    setEditingPost(post);
-  };
-
-  const handleCreate = async () => {
-    if (!formData.image_url) {
-      toast.error("Image URL is required");
-      return;
-    }
-    try {
-      await axios.post(`${API}/admin/instagram-posts`, formData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      toast.success("Post added");
-      setIsCreating(false);
-      loadPosts();
-      onRefresh();
-    } catch (error) {
-      toast.error("Failed to create post");
-    }
-  };
-
-  const handleUpdate = async () => {
-    try {
-      await axios.patch(`${API}/admin/instagram-posts/${editingPost.id}`, formData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      toast.success("Post updated");
-      setEditingPost(null);
-      loadPosts();
-      onRefresh();
-    } catch (error) {
-      toast.error("Failed to update");
-    }
-  };
-
-  const handleDelete = async (postId) => {
-    if (!confirm("Delete this post?")) return;
-    try {
-      await axios.delete(`${API}/admin/instagram-posts/${postId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      toast.success("Post deleted");
-      loadPosts();
-      onRefresh();
-    } catch (error) {
-      toast.error("Failed to delete");
-    }
-  };
-
-  if (loading) {
-    return <div className="text-center py-12"><Loader2 size={32} className="animate-spin mx-auto text-[#A1A1A6]" /></div>;
-  }
-
-  return (
-    <>
-      <div className="mb-4 flex justify-end">
-        <button onClick={openCreateDialog} className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-display uppercase text-sm hover:from-purple-700 hover:to-pink-700 shadow-lg flex items-center gap-2">
-          <Plus size={16} /> Add Instagram Post
-        </button>
-      </div>
-
-      <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {posts.map((post) => (
-          <div key={post.id} className="bg-white rounded-xl overflow-hidden border border-gray-200 hover:shadow-lg transition-all">
-            <div className="aspect-square bg-gray-900 overflow-hidden">
-              <img src={post.image_url} alt={post.caption || "Instagram post"} className="w-full h-full object-cover" />
-            </div>
-            <div className="p-4">
-              {post.caption && <p className="text-sm text-gray-600 line-clamp-2 mb-3">{post.caption}</p>}
-              <div className="flex gap-2">
-                <button onClick={() => openEditDialog(post)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 flex items-center justify-center gap-1">
-                  <Edit size={14} /> Edit
-                </button>
-                <button onClick={() => handleDelete(post.id)} className="flex-1 px-3 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 flex items-center justify-center gap-1">
-                  <Trash2 size={14} /> Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {posts.length === 0 && (
-        <div className="text-center py-12 bg-white rounded-2xl border border-gray-200">
-          <Instagram size={48} className="mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-500">No Instagram posts yet. Add your first post!</p>
-        </div>
+      {/* ── SIDEBAR ──────────────────────────────────────────────────────── */}
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-30 bg-black/50 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      <Dialog open={isCreating || !!editingPost} onOpenChange={() => { setIsCreating(false); setEditingPost(null); }}>
-        <DialogContent className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="title-massive text-2xl">
-              {isCreating ? "Add" : "Edit"} Instagram Post<span className="text-[#86868B]">.</span>
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 mt-4">
-            <div>
-              <Label>Image URL *</Label>
-              <Input
-                value={formData.image_url}
-                onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                className="mt-2"
-                placeholder="https://..."
-              />
-            </div>
-            <div>
-              <Label>Caption</Label>
-              <Textarea
-                value={formData.caption}
-                onChange={(e) => setFormData({ ...formData, caption: e.target.value })}
-                rows={3}
-                className="mt-2"
-                placeholder="Optional caption for the post"
-              />
-            </div>
-            <div>
-              <Label>Instagram Post URL (optional)</Label>
-              <Input
-                value={formData.post_url}
-                onChange={(e) => setFormData({ ...formData, post_url: e.target.value })}
-                className="mt-2"
-                placeholder="https://instagram.com/p/..."
-              />
-            </div>
-            {formData.image_url && (
-              <div>
-                <Label>Preview</Label>
-                <div className="mt-2 aspect-square rounded-lg overflow-hidden border border-gray-200">
-                  <img src={formData.image_url} alt="Preview" className="w-full h-full object-cover" />
-                </div>
-              </div>
-            )}
-            <div className="flex gap-3 pt-4">
-              <button
-                onClick={() => { setIsCreating(false); setEditingPost(null); }}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg font-display uppercase text-sm hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={isCreating ? handleCreate : handleUpdate}
-                className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg font-display uppercase text-sm hover:from-purple-700 hover:to-pink-700 shadow-md"
-              >
-                {isCreating ? "Add Post" : "Update Post"}
-              </button>
-            </div>
+      <aside className={`
+        fixed lg:static inset-y-0 left-0 z-40 w-60 bg-[#111] text-white flex flex-col
+        transform transition-transform duration-300
+        ${sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
+      `} data-testid="admin-sidebar">
+        {/* Logo */}
+        <div className="px-6 pt-7 pb-6 border-b border-white/[0.07]">
+          <div className="font-black uppercase tracking-[-0.04em] text-3xl leading-none" style={{ fontFamily: "'Outfit', sans-serif" }}>
+            TZOUL
           </div>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-
-// Overview Tab with Analytics
-function OverviewTab({ bookings, services, barbers, totalRevenue, todayBookings }) {
-  const thisMonth = bookings.filter(b => {
-    const bookingDate = new Date(b.date);
-    const now = new Date();
-    return bookingDate.getMonth() === now.getMonth() && bookingDate.getFullYear() === now.getFullYear();
-  });
-
-  const serviceStats = {};
-  bookings.forEach(b => {
-    serviceStats[b.service_name] = (serviceStats[b.service_name] || 0) + 1;
-  });
-  const topServices = Object.entries(serviceStats).sort((a, b) => b[1] - a[1]).slice(0, 5);
-
-  return (
-    <div className="space-y-6">
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard label="Total Revenue" value={`€${totalRevenue}`} icon={<DollarSign size={20} />} color="green" />
-        <StatCard label="Total Bookings" value={bookings.length} icon={<Calendar size={20} />} color="blue" />
-        <StatCard label="Today's Bookings" value={todayBookings.length} icon={<CalendarCheck size={20} />} color="red" />
-        <StatCard label="This Month" value={thisMonth.length} icon={<TrendingUp size={20} />} color="purple" />
-      </div>
-
-      {/* Today's Schedule */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-        <h3 className="title-massive text-2xl mb-4">Today's Appointments<span className="text-[#86868B]">.</span></h3>
-        {todayBookings.length === 0 ? (
-          <p className="text-center text-gray-500 py-8">No appointments for today</p>
-        ) : (
-          <div className="space-y-3">
-            {todayBookings.sort((a, b) => a.time.localeCompare(b.time)).map((booking) => (
-              <div key={booking.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <div className="px-3 py-2 bg-[#38BDF8] text-[#0F172A] rounded-lg font-mono text-sm font-bold">{booking.time}</div>
-                <div className="flex-1">
-                  <div className="font-display uppercase text-base">{booking.name}</div>
-                  <div className="text-sm text-gray-600">{booking.service_name} • {booking.barber_name}</div>
-                </div>
-                <div className="text-right">
-                  <div className="font-display text-lg text-[#86868B]">€{booking.price}</div>
-                  <div className="text-xs text-gray-500">{booking.duration} min</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Popular Services */}
-      <div className="grid md:grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-          <h3 className="title-massive text-xl mb-4">Top Services<span className="text-[#86868B]">.</span></h3>
-          <div className="space-y-3">
-            {topServices.map(([service, count], idx) => (
-              <div key={service} className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-[#E63329] text-white rounded-full flex items-center justify-center text-sm font-bold">{idx + 1}</div>
-                <div className="flex-1">
-                  <div className="font-display uppercase text-sm">{service}</div>
-                  <div className="text-xs text-gray-500">{count} bookings</div>
-                </div>
-                <div className="h-2 bg-gray-200 rounded-full flex-1 max-w-[100px]">
-                  <div className="h-full bg-[#E63329] rounded-full" style={{ width: `${(count / bookings.length) * 100}%` }}></div>
-                </div>
-              </div>
-            ))}
+          <div className="font-mono text-[0.55rem] tracking-[0.32em] uppercase text-white/30 mt-0.5">
+            ADMIN PANEL
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-          <h3 className="title-massive text-xl mb-4">Quick Stats<span className="text-[#86868B]">.</span></h3>
-          <div className="space-y-4">
-            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-              <span className="text-sm text-gray-600">Active Barbers</span>
-              <span className="font-display text-2xl">{barbers.length}</span>
-            </div>
-            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-              <span className="text-sm text-gray-600">Available Services</span>
-              <span className="font-display text-2xl">{services.length}</span>
-            </div>
-            <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-              <span className="text-sm text-gray-600">Avg. Booking Value</span>
-              <span className="font-display text-2xl">€{bookings.length > 0 ? Math.round(totalRevenue / bookings.length) : 0}</span>
+        {/* Nav */}
+        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+          {NAV.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              data-testid={`nav-${id}`}
+              onClick={() => { setTab(id); setSidebarOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+                tab === id
+                  ? "bg-white text-[#1D1D1F] shadow-sm"
+                  : "text-white/55 hover:text-white hover:bg-white/[0.07]"
+              }`}
+            >
+              <Icon size={16} className="shrink-0" />
+              {label}
+              {tab === id && <ChevronRight size={12} className="ml-auto text-[#86868B]" />}
+            </button>
+          ))}
+        </nav>
+
+        {/* Bottom */}
+        <div className="px-3 pb-5 pt-3 border-t border-white/[0.07]">
+          <button
+            data-testid="admin-logout-btn"
+            onClick={logout}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/45 hover:text-red-400 hover:bg-red-500/10 transition-all duration-150"
+          >
+            <LogOut size={16} className="shrink-0" /> Sign out
+          </button>
+        </div>
+      </aside>
+
+      {/* ── MAIN ─────────────────────────────────────────────────────────── */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Top bar */}
+        <header className="h-14 bg-white border-b border-black/[0.06] flex items-center gap-4 px-5 shrink-0 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+          <button
+            className="lg:hidden p-1.5 rounded-lg hover:bg-gray-100 text-gray-600 transition-colors"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu size={20} />
+          </button>
+          <h1 className="font-semibold text-[#1D1D1F] text-sm" style={{ fontFamily: "'Outfit', sans-serif" }}>
+            {currentNav?.label}
+          </h1>
+          <div className="ml-auto flex items-center gap-3">
+            <button
+              onClick={load}
+              disabled={loading}
+              className="p-1.5 rounded-lg text-[#86868B] hover:text-[#1D1D1F] hover:bg-gray-100 transition-colors disabled:opacity-40"
+              title="Refresh"
+            >
+              <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+            </button>
+            <div className="text-xs text-[#86868B] font-mono hidden sm:block">
+              {new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
             </div>
           </div>
+        </header>
+
+        {/* Content */}
+        <main className="flex-1 overflow-y-auto p-5 md:p-7">
+          {loading
+            ? <div className="flex items-center justify-center h-64">
+                <Loader2 size={28} className="animate-spin text-[#A1A1A6]" />
+              </div>
+            : <ActiveTab />}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+// ─── STAT CARD ───────────────────────────────────────────────────────────────
+function StatCard({ label, value, icon: Icon, sub }) {
+  return (
+    <div className="bg-white rounded-2xl border border-black/[0.06] p-5 shadow-[0_1px_6px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.07)] transition-shadow">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B]">{label}</div>
+          <div className="mt-1.5 text-3xl font-black text-[#1D1D1F]" style={{ fontFamily: "'Outfit', sans-serif" }}>{value}</div>
+          {sub && <div className="mt-1 text-xs text-[#A1A1A6]">{sub}</div>}
+        </div>
+        <div className="p-2.5 rounded-xl bg-[#F5F5F7] text-[#86868B]">
+          <Icon size={18} />
         </div>
       </div>
     </div>
   );
 }
 
-// Daily Schedule View
-function DailyScheduleTab({ bookings, barbers, services, token, onRefresh }) {
-  const [selectedBarber, setSelectedBarber] = useState(barbers[0]?.id || "");
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  
-  const timeSlots = [];
-  for (let hour = 9; hour <= 21; hour++) {
-    for (let min of [0, 30]) {
-      if (hour === 21 && min === 30) break;
-      timeSlots.push(`${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`);
-    }
-  }
+// ─── STATUS BADGE ────────────────────────────────────────────────────────────
+function Badge({ status }) {
+  const cls = status === "confirmed"
+    ? "bg-green-50 text-green-700 border-green-200"
+    : "bg-red-50 text-red-600 border-red-200";
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full font-mono text-[0.6rem] uppercase tracking-wider border ${cls}`}>
+      {status}
+    </span>
+  );
+}
 
-  const dayBookings = bookings.filter(b => b.barber_id === selectedBarber && b.date === selectedDate && b.status === "confirmed");
+// ─── OVERVIEW ────────────────────────────────────────────────────────────────
+function OverviewTab({ bookings, services, barbers, revenue, todayB }) {
+  const thisMonth = bookings.filter(b => {
+    const d = new Date(b.date), n = new Date();
+    return d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear();
+  });
+
+  const svcMap = {};
+  bookings.forEach(b => { svcMap[b.service_name] = (svcMap[b.service_name] || 0) + 1; });
+  const topSvc = Object.entries(svcMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
 
   return (
-    <div className="space-y-6">
-      {/* Filters */}
-      <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-        <div className="grid md:grid-cols-2 gap-4">
-          <div>
-            <Label>Select Barber</Label>
-            <select value={selectedBarber} onChange={(e) => setSelectedBarber(e.target.value)} className="w-full mt-2 px-3 py-2 border border-gray-200 rounded-lg">
-              {barbers.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <Label>Select Date</Label>
-            <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="mt-2" />
-          </div>
-        </div>
+    <div className="space-y-6" data-testid="overview-tab">
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Total Revenue"    value={`€${revenue}`}       icon={DollarSign} sub="all confirmed" />
+        <StatCard label="Total Bookings"   value={bookings.length}      icon={CalendarDays} sub="confirmed" />
+        <StatCard label="Today"            value={todayB.length}        icon={Clock} sub="appointments" />
+        <StatCard label="This Month"       value={thisMonth.length}     icon={TrendingUp} sub="bookings" />
       </div>
 
-      {/* Timeline View */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="title-massive text-2xl">
-            {barbers.find(b => b.id === selectedBarber)?.name}'s Schedule<span className="text-[#86868B]">.</span>
-          </h3>
-          <div className="text-sm text-gray-600">
-            {dayBookings.length} appointments • €{dayBookings.reduce((sum, b) => sum + b.price, 0)} revenue
+      <div className="grid lg:grid-cols-5 gap-6">
+        {/* Today's appointments */}
+        <div className="lg:col-span-3 bg-white rounded-2xl border border-black/[0.06] shadow-[0_1px_6px_rgba(0,0,0,0.04)] overflow-hidden">
+          <div className="px-6 py-4 border-b border-black/[0.05] flex items-center justify-between">
+            <h3 className="font-semibold text-[#1D1D1F] text-sm" style={{ fontFamily: "'Outfit', sans-serif" }}>
+              Today's Appointments
+            </h3>
+            <span className="font-mono text-[0.62rem] text-[#86868B]">
+              {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
+            </span>
+          </div>
+          <div className="divide-y divide-black/[0.04]">
+            {todayB.length === 0
+              ? <div className="p-10 text-center text-sm text-[#A1A1A6]">No appointments today</div>
+              : todayB.sort((a, b) => a.time.localeCompare(b.time)).map(b => (
+                  <div key={b.id} className="flex items-center gap-4 px-6 py-3.5 hover:bg-[#F5F5F7] transition-colors">
+                    <div className="w-14 font-mono text-sm font-semibold text-[#1D1D1F] shrink-0">{b.time}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm text-[#1D1D1F] truncate">{b.name}</div>
+                      <div className="text-xs text-[#86868B] truncate">{b.service_name} · {b.barber_name}</div>
+                    </div>
+                    <div className="font-mono text-sm font-semibold text-[#1D1D1F] shrink-0">€{b.price}</div>
+                  </div>
+                ))}
           </div>
         </div>
 
-        <div className="space-y-2">
-          {timeSlots.map(slot => {
-            const booking = dayBookings.find(b => b.time === slot);
-            return (
-              <div key={slot} className="flex items-stretch gap-3">
-                <div className="w-20 py-3 font-mono text-sm text-gray-600 flex items-center">{slot}</div>
-                {booking ? (
-                  <div className="flex-1 p-4 bg-gradient-to-r from-[#1D1D1F] to-[#333] text-white rounded-lg border-2 border-[#E63329] shadow-md">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="font-display uppercase text-base font-bold">{booking.name}</div>
-                        <div className="text-sm text-white/90 mt-1">{booking.phone}</div>
-                        <div className="flex items-center gap-3 mt-2 text-sm text-white/80">
-                          <span className="flex items-center gap-1"><Scissors size={12} /> {booking.service_name}</span>
-                          <span className="flex items-center gap-1"><Clock size={12} /> {booking.duration} min</span>
+        {/* Side stats */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="bg-white rounded-2xl border border-black/[0.06] shadow-[0_1px_6px_rgba(0,0,0,0.04)] p-5">
+            <h3 className="font-semibold text-sm text-[#1D1D1F] mb-4" style={{ fontFamily: "'Outfit', sans-serif" }}>Top Services</h3>
+            <div className="space-y-3">
+              {topSvc.length === 0
+                ? <p className="text-xs text-[#A1A1A6]">No data yet</p>
+                : topSvc.map(([name, count], i) => (
+                    <div key={name} className="flex items-center gap-3">
+                      <span className="font-mono text-[0.6rem] w-4 text-[#86868B]">#{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-[#1D1D1F] truncate">{name}</div>
+                        <div className="mt-1 h-1.5 bg-[#F5F5F7] rounded-full overflow-hidden">
+                          <div className="h-full bg-[#1D1D1F] rounded-full" style={{ width: `${(count / bookings.length) * 100}%` }} />
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-2xl font-display font-bold">€{booking.price}</div>
-                        {booking.notes && (
-                          <div className="mt-2 text-xs bg-white/20 px-2 py-1 rounded">{booking.notes}</div>
-                        )}
-                      </div>
+                      <span className="font-mono text-[0.62rem] text-[#86868B] shrink-0">{count}</span>
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex-1 p-4 border-2 border-dashed border-gray-200 rounded-lg bg-gray-50">
-                    <div className="text-sm text-gray-400 text-center">Available</div>
-                  </div>
-                )}
+                  ))}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-black/[0.06] shadow-[0_1px_6px_rgba(0,0,0,0.04)] p-5 space-y-3">
+            {[
+              { l: "Active Barbers",      v: barbers.length },
+              { l: "Services Available",  v: services.length },
+              { l: "Avg Booking Value",   v: `€${bookings.length ? Math.round(revenue / bookings.length) : 0}` },
+            ].map(({ l, v }) => (
+              <div key={l} className="flex justify-between items-center py-2 border-b border-black/[0.05] last:border-0">
+                <span className="text-xs text-[#86868B]">{l}</span>
+                <span className="font-semibold text-sm text-[#1D1D1F]" style={{ fontFamily: "'Outfit', sans-serif" }}>{v}</span>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// (Keep all the other tab components from the previous version: BookingsTab, ServicesTab, BarbersTab, SchedulesTab)
-// I'll add them after this...
-// Bookings Tab Component
+// ─── BOOKINGS ────────────────────────────────────────────────────────────────
 function BookingsTab({ bookings, token, onRefresh }) {
+  const [search, setSearch]           = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [editingBooking, setEditingBooking] = useState(null);
-  const [editDate, setEditDate] = useState("");
-  const [editTime, setEditTime] = useState("");
+  const [editDate, setEditDate]   = useState("");
+  const [editTime, setEditTime]   = useState("");
   const [editNotes, setEditNotes] = useState("");
 
-  const openEditDialog = (booking) => {
-    setEditingBooking(booking);
-    setEditDate(booking.date);
-    setEditTime(booking.time);
-    setEditNotes(booking.notes || "");
-  };
+  const filtered = bookings.filter(b => {
+    const q = search.toLowerCase();
+    const matchQ = !q || b.name?.toLowerCase().includes(q) || b.phone?.includes(q) || b.service_name?.toLowerCase().includes(q);
+    const matchS = statusFilter === "all" || b.status === statusFilter;
+    return matchQ && matchS;
+  });
+
+  const openEdit = (b) => { setEditingBooking(b); setEditDate(b.date); setEditTime(b.time); setEditNotes(b.notes || ""); };
 
   const handleUpdate = async () => {
     try {
-      await axios.patch(
-        `${API}/admin/bookings/${editingBooking.id}`,
+      await axios.patch(`${API}/admin/bookings/${editingBooking.id}`,
         { date: editDate, time: editTime, notes: editNotes },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+        { headers: authH(token) });
       toast.success("Booking updated");
       setEditingBooking(null);
       onRefresh();
-    } catch (error) {
-      toast.error(error?.response?.data?.detail || "Failed to update");
-    }
+    } catch (e) { toast.error(e?.response?.data?.detail || "Failed to update"); }
   };
 
-  const handleCancel = async (bookingId) => {
-    if (!confirm("Cancel this booking?")) return;
+  const handleCancel = async (id) => {
+    if (!window.confirm("Cancel this booking?")) return;
     try {
-      await axios.delete(`${API}/admin/bookings/${bookingId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await axios.delete(`${API}/admin/bookings/${id}`, { headers: authH(token) });
       toast.success("Booking cancelled");
       onRefresh();
-    } catch (error) {
-      toast.error("Failed to cancel");
-    }
+    } catch { toast.error("Failed to cancel"); }
   };
 
   return (
-    <>
-      <div className="rounded-2xl overflow-hidden shadow-lg border border-gray-200 bg-white">
-        <div className="bg-gradient-to-r from-gray-900 to-gray-800 text-white p-5">
-          <h2 className="title-massive text-2xl">All Bookings</h2>
+    <div className="space-y-4" data-testid="bookings-tab">
+      {/* Filters */}
+      <div className="bg-white rounded-2xl border border-black/[0.06] p-4 flex flex-wrap gap-3 items-center shadow-[0_1px_6px_rgba(0,0,0,0.04)]">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#86868B]" />
+          <input
+            data-testid="booking-search"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search name, phone, service…"
+            className="w-full pl-9 pr-4 py-2 bg-[#F5F5F7] border border-black/[0.06] rounded-xl text-sm text-[#1D1D1F] placeholder-[#A1A1A6] focus:outline-none focus:ring-2 focus:ring-black/10 transition-all"
+          />
         </div>
+        <div className="flex gap-2">
+          {["all", "confirmed", "cancelled"].map(s => (
+            <button
+              key={s}
+              data-testid={`filter-${s}`}
+              onClick={() => setStatusFilter(s)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-mono uppercase tracking-wider transition-all ${
+                statusFilter === s
+                  ? "bg-[#1D1D1F] text-white"
+                  : "bg-[#F5F5F7] text-[#86868B] hover:bg-[#ECECEE]"
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-[#A1A1A6] font-mono ml-auto">{filtered.length} results</span>
+      </div>
 
-        {bookings.length === 0 ? (
-          <div className="p-12 text-center">
-            <p className="text-gray-500">No bookings found</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {bookings.map((booking) => (
-              <div key={booking.id} className={`p-5 md:p-6 hover:bg-gray-50 transition-colors ${booking.status === "cancelled" ? "bg-red-50/50" : ""}`}>
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-start gap-3 mb-3">
-                      <div className="flex-1">
-                        <div className="font-display text-lg uppercase">{booking.name}</div>
-                        <div className="text-sm text-gray-500 mt-1">{booking.phone} {booking.email && `· ${booking.email}`}</div>
+      {/* List */}
+      <div className="bg-white rounded-2xl border border-black/[0.06] shadow-[0_1px_6px_rgba(0,0,0,0.04)] overflow-hidden">
+        {filtered.length === 0
+          ? <div className="p-12 text-center text-sm text-[#A1A1A6]">No bookings match your search</div>
+          : <div className="divide-y divide-black/[0.04]">
+              {filtered.map(b => (
+                <div
+                  key={b.id}
+                  data-testid={`booking-row-${b.id}`}
+                  className={`px-5 py-4 hover:bg-[#F5F5F7] transition-colors ${b.status === "cancelled" ? "opacity-60" : ""}`}
+                >
+                  <div className="flex flex-wrap items-start gap-4">
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="font-semibold text-sm text-[#1D1D1F]">{b.name}</span>
+                        <Badge status={b.status} />
                       </div>
-                      <span className={`px-3 py-1 text-xs uppercase font-mono tracking-wider rounded-full ${booking.status === "confirmed" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>{booking.status}</span>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#86868B]">
+                        <span className="flex items-center gap-1"><Phone size={11} />{b.phone}</span>
+                        {b.email && <span className="flex items-center gap-1"><Mail size={11} />{b.email}</span>}
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#86868B] mt-0.5">
+                        <span>{b.service_name}</span>
+                        <span>·</span>
+                        <span>{b.barber_name}</span>
+                        <span>·</span>
+                        <span className="font-mono">{b.date} {b.time}</span>
+                        <span>·</span>
+                        <span className="font-semibold text-[#1D1D1F]">€{b.price}</span>
+                      </div>
+                      {b.notes && (
+                        <div className="text-xs text-[#86868B] italic mt-0.5">{b.notes}</div>
+                      )}
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                      <div className="flex items-center gap-2 text-gray-600"><Scissors size={14} className="text-[#86868B]" />{booking.service_name}</div>
-                      <div className="flex items-center gap-2 text-gray-600"><User size={14} className="text-[#86868B]" />{booking.barber_name}</div>
-                      <div className="flex items-center gap-2 text-gray-600"><Calendar size={14} className="text-[#86868B]" />{booking.date}</div>
-                      <div className="flex items-center gap-2 text-gray-600"><Clock size={14} className="text-[#86868B]" />{booking.time}</div>
-                    </div>
+                    {b.status === "confirmed" && (
+                      <div className="flex gap-2 shrink-0">
+                        <button
+                          data-testid={`edit-booking-${b.id}`}
+                          onClick={() => openEdit(b)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 border border-black/[0.10] rounded-lg text-xs text-[#1D1D1F] hover:bg-[#F5F5F7] transition-colors"
+                        >
+                          <Edit2 size={12} /> Reschedule
+                        </button>
+                        <button
+                          data-testid={`cancel-booking-${b.id}`}
+                          onClick={() => handleCancel(b.id)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs hover:bg-red-100 transition-colors"
+                        >
+                          <X size={12} /> Cancel
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  {booking.status === "confirmed" && (
-                    <div className="flex gap-2">
-                      <button onClick={() => openEditDialog(booking)} className="px-4 py-2 border border-gray-300 rounded-lg font-display uppercase text-sm hover:bg-gray-50 transition-colors flex items-center gap-2"><Edit size={14} /> Edit</button>
-                      <button onClick={() => handleCancel(booking.id)} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-display uppercase text-sm transition-colors shadow-md flex items-center gap-2"><Trash2 size={14} /> Cancel</button>
-                    </div>
-                  )}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>}
       </div>
 
       <Dialog open={!!editingBooking} onOpenChange={() => setEditingBooking(null)}>
-        <DialogContent className="bg-white rounded-2xl border border-gray-200 shadow-2xl">
-          <DialogHeader><DialogTitle className="title-massive text-2xl">Edit Booking<span className="text-[#86868B]">.</span></DialogTitle></DialogHeader>
-          <div className="space-y-4 mt-4">
-            <div><Label className="font-mono text-xs uppercase tracking-wider text-gray-600">Date</Label><Input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="mt-2 border border-gray-200 rounded-lg" /></div>
-            <div><Label className="font-mono text-xs uppercase tracking-wider text-gray-600">Time</Label><Input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="mt-2 border border-gray-200 rounded-lg" /></div>
-            <div><Label className="font-mono text-xs uppercase tracking-wider text-gray-600">Notes</Label><Input value={editNotes} onChange={(e) => setEditNotes(e.target.value)} className="mt-2 border border-gray-200 rounded-lg" /></div>
-            <div className="flex gap-3 pt-4">
-              <button onClick={() => setEditingBooking(null)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg font-display uppercase text-sm hover:bg-gray-50">Cancel</button>
-              <button onClick={handleUpdate} className="flex-1 px-4 py-2 bg-[#E63329] text-white rounded-lg font-display uppercase text-sm hover:bg-[#d62d25] shadow-md">Update</button>
+        <DialogContent className="bg-white rounded-2xl max-w-md">
+          <DialogHeader><DialogTitle className="text-lg font-bold" style={{ fontFamily: "'Outfit', sans-serif" }}>Reschedule Booking</DialogTitle></DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div><Label className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B]">Date</Label>
+              <Input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="mt-1.5" /></div>
+            <div><Label className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B]">Time (HH:MM)</Label>
+              <Input type="time" value={editTime} onChange={e => setEditTime(e.target.value)} className="mt-1.5" /></div>
+            <div><Label className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B]">Notes</Label>
+              <Input value={editNotes} onChange={e => setEditNotes(e.target.value)} className="mt-1.5" placeholder="Internal note" /></div>
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setEditingBooking(null)} className="flex-1 py-2.5 border border-black/[0.10] rounded-xl text-sm text-[#86868B] hover:bg-[#F5F5F7] transition-colors">Cancel</button>
+              <button onClick={handleUpdate} className="flex-1 py-2.5 bg-[#1D1D1F] text-white rounded-xl text-sm font-semibold hover:bg-[#333] transition-colors">Save changes</button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
 
-// Services Tab Component
-function ServicesTab({ services, token, onRefresh }) {
-  const [isCreating, setIsCreating] = useState(false);
-  const [editingService, setEditingService] = useState(null);
-  const [formData, setFormData] = useState({ name: "", duration: "", price: "", description: "", category: "Hair" });
+// ─── DAILY SCHEDULE ──────────────────────────────────────────────────────────
+function DailyTab({ bookings, barbers }) {
+  const [barberId, setBarberId]     = useState(barbers[0]?.id || "");
+  const [date, setDate]             = useState(new Date().toISOString().split("T")[0]);
 
-  const openCreateDialog = () => {
-    setFormData({ name: "", duration: "", price: "", description: "", category: "Hair" });
-    setIsCreating(true);
-  };
-
-  const openEditDialog = (service) => {
-    setFormData({ name: service.name, duration: service.duration, price: service.price, description: service.description, category: service.category });
-    setEditingService(service);
-  };
-
-  const handleCreate = async () => {
-    try {
-      await axios.post(`${API}/admin/services`, { ...formData, duration: parseInt(formData.duration), price: parseInt(formData.price) }, { headers: { Authorization: `Bearer ${token}` } });
-      toast.success("Service created");
-      setIsCreating(false);
-      onRefresh();
-    } catch (error) {
-      toast.error(error?.response?.data?.detail || "Failed to create");
+  const slots = [];
+  for (let h = 11; h <= 21; h++) {
+    for (const m of [0, 30]) {
+      if (h === 21 && m === 30) break;
+      slots.push(`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`);
     }
-  };
+  }
 
-  const handleUpdate = async () => {
-    try {
-      await axios.put(`${API}/admin/services/${editingService.id}`, { ...formData, duration: parseInt(formData.duration), price: parseInt(formData.price) }, { headers: { Authorization: `Bearer ${token}` } });
-      toast.success("Service updated");
-      setEditingService(null);
-      onRefresh();
-    } catch (error) {
-      toast.error("Failed to update");
-    }
-  };
-
-  const handleDelete = async (serviceId) => {
-    if (!confirm("Delete this service?")) return;
-    try {
-      await axios.delete(`${API}/admin/services/${serviceId}`, { headers: { Authorization: `Bearer ${token}` } });
-      toast.success("Service deleted");
-      onRefresh();
-    } catch (error) {
-      toast.error("Failed to delete");
-    }
-  };
+  const dayB = bookings.filter(b => b.barber_id === barberId && b.date === date && b.status === "confirmed");
+  const dayRevenue = dayB.reduce((s, b) => s + b.price, 0);
 
   return (
-    <>
-      <div className="mb-4 flex justify-end">
-        <button onClick={openCreateDialog} className="px-6 py-3 bg-[#E63329] text-white rounded-lg font-display uppercase text-sm hover:bg-[#d62d25] shadow-lg flex items-center gap-2"><Plus size={16} /> Add Service</button>
+    <div className="space-y-5" data-testid="daily-tab">
+      {/* Filters */}
+      <div className="bg-white rounded-2xl border border-black/[0.06] p-4 flex flex-wrap gap-4 shadow-[0_1px_6px_rgba(0,0,0,0.04)]">
+        <div className="flex-1 min-w-[180px]">
+          <label className="block font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B] mb-1.5">Barber</label>
+          <select value={barberId} onChange={e => setBarberId(e.target.value)}
+            className="w-full px-3 py-2 bg-[#F5F5F7] border border-black/[0.06] rounded-xl text-sm text-[#1D1D1F] focus:outline-none focus:ring-2 focus:ring-black/10">
+            {barbers.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </div>
+        <div className="flex-1 min-w-[160px]">
+          <label className="block font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B] mb-1.5">Date</label>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)}
+            className="w-full px-3 py-2 bg-[#F5F5F7] border border-black/[0.06] rounded-xl text-sm text-[#1D1D1F] focus:outline-none focus:ring-2 focus:ring-black/10" />
+        </div>
+        <div className="flex items-end gap-4 text-sm">
+          <div className="text-right">
+            <div className="font-mono text-[0.58rem] uppercase tracking-wider text-[#86868B]">Appointments</div>
+            <div className="font-bold text-lg text-[#1D1D1F]" style={{ fontFamily: "'Outfit', sans-serif" }}>{dayB.length}</div>
+          </div>
+          <div className="text-right">
+            <div className="font-mono text-[0.58rem] uppercase tracking-wider text-[#86868B]">Revenue</div>
+            <div className="font-bold text-lg text-[#1D1D1F]" style={{ fontFamily: "'Outfit', sans-serif" }}>€{dayRevenue}</div>
+          </div>
+        </div>
       </div>
 
-      <div className="grid gap-4">
-        {services.map((service) => (
-          <div key={service.id} className="bg-white p-6 rounded-xl border border-gray-200 hover:shadow-md transition-all">
-            <div className="flex justify-between items-start gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <h3 className="font-display uppercase text-lg">{service.name}</h3>
-                  <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded font-mono">{service.category}</span>
+      {/* Timeline */}
+      <div className="bg-white rounded-2xl border border-black/[0.06] p-5 shadow-[0_1px_6px_rgba(0,0,0,0.04)] space-y-2">
+        {slots.map(slot => {
+          const b = dayB.find(b => b.time === slot);
+          return (
+            <div key={slot} className="flex items-stretch gap-3">
+              <div className="w-16 font-mono text-xs text-[#A1A1A6] flex items-center shrink-0">{slot}</div>
+              {b ? (
+                <div className="flex-1 p-4 bg-[#1D1D1F] text-white rounded-xl flex flex-wrap items-center gap-3" data-testid={`daily-slot-${slot}`}>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm truncate">{b.name}</div>
+                    <div className="text-xs text-white/60 mt-0.5">{b.phone}</div>
+                    <div className="text-xs text-white/70 mt-1">{b.service_name} · {b.duration} min</div>
+                  </div>
+                  <div className="font-bold text-xl shrink-0" style={{ fontFamily: "'Outfit', sans-serif" }}>€{b.price}</div>
                 </div>
-                <p className="text-gray-600 text-sm mb-3">{service.description}</p>
-                <div className="flex gap-4 text-sm">
-                  <span className="text-gray-500">Duration: <strong>{service.duration} min</strong></span>
-                  <span className="text-[#86868B] font-display text-lg">€{service.price}</span>
+              ) : (
+                <div className="flex-1 border border-dashed border-black/[0.10] rounded-xl py-3 flex items-center justify-center">
+                  <span className="text-xs text-[#C5C5C7]">Available</span>
                 </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── SERVICES ────────────────────────────────────────────────────────────────
+function ServicesTab({ services, token, onRefresh }) {
+  const blank = { name: "", duration: "", price: "", description: "", category: "Hair" };
+  const [isCreating, setIsCreating]     = useState(false);
+  const [editing, setEditing]           = useState(null);
+  const [form, setForm]                 = useState(blank);
+
+  const openCreate = () => { setForm(blank); setIsCreating(true); };
+  const openEdit   = (s) => { setForm({ name: s.name, duration: s.duration, price: s.price, description: s.description, category: s.category }); setEditing(s); };
+
+  const save = async () => {
+    const payload = { ...form, duration: parseInt(form.duration), price: parseInt(form.price) };
+    try {
+      if (isCreating) {
+        await axios.post(`${API}/admin/services`, payload, { headers: authH(token) });
+        toast.success("Service created"); setIsCreating(false);
+      } else {
+        await axios.put(`${API}/admin/services/${editing.id}`, payload, { headers: authH(token) });
+        toast.success("Service updated"); setEditing(null);
+      }
+      onRefresh();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
+  };
+
+  const del = async (id) => {
+    if (!window.confirm("Delete this service?")) return;
+    try {
+      await axios.delete(`${API}/admin/services/${id}`, { headers: authH(token) });
+      toast.success("Deleted"); onRefresh();
+    } catch { toast.error("Failed to delete"); }
+  };
+
+  const CATS = ["Hair", "Beard", "VIP", "Care"];
+
+  return (
+    <div className="space-y-4" data-testid="services-tab">
+      <div className="flex justify-end">
+        <button onClick={openCreate} data-testid="add-service-btn"
+          className="flex items-center gap-2 px-4 py-2.5 bg-[#1D1D1F] text-white rounded-xl text-sm font-semibold hover:bg-[#333] transition-all shadow-[0_4px_14px_rgba(0,0,0,0.10)]"
+          style={{ fontFamily: "'Outfit', sans-serif" }}>
+          <Plus size={15} /> Add Service
+        </button>
+      </div>
+
+      <div className="grid gap-3">
+        {services.map(s => (
+          <div key={s.id} data-testid={`service-row-${s.id}`}
+            className="bg-white rounded-2xl border border-black/[0.06] px-5 py-4 flex flex-wrap items-center gap-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.07)] transition-shadow shadow-[0_1px_6px_rgba(0,0,0,0.04)]">
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <span className="font-semibold text-sm text-[#1D1D1F]">{s.name}</span>
+                <span className="font-mono text-[0.58rem] px-2 py-0.5 bg-[#F5F5F7] text-[#86868B] rounded-full uppercase tracking-wider">{s.category}</span>
               </div>
-              <div className="flex gap-2">
-                <button onClick={() => openEditDialog(service)} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50"><Edit size={16} /></button>
-                <button onClick={() => handleDelete(service.id)} className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700"><Trash2 size={16} /></button>
+              <div className="text-xs text-[#86868B]">{s.description}</div>
+              <div className="flex gap-4 mt-1.5 text-xs text-[#86868B]">
+                <span>{s.duration} min</span>
+                <span className="font-semibold text-[#1D1D1F] font-mono">€{s.price}</span>
               </div>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button onClick={() => openEdit(s)} data-testid={`edit-service-${s.id}`}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-black/[0.10] rounded-lg text-xs hover:bg-[#F5F5F7] transition-colors">
+                <Edit2 size={12} /> Edit
+              </button>
+              <button onClick={() => del(s.id)} data-testid={`delete-service-${s.id}`}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs hover:bg-red-100 transition-colors">
+                <Trash2 size={12} /> Delete
+              </button>
             </div>
           </div>
         ))}
       </div>
 
-      <Dialog open={isCreating || !!editingService} onOpenChange={() => { setIsCreating(false); setEditingService(null); }}>
-        <DialogContent className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-2xl">
-          <DialogHeader><DialogTitle className="title-massive text-2xl">{isCreating ? "Create" : "Edit"} Service<span className="text-[#86868B]">.</span></DialogTitle></DialogHeader>
-          <div className="space-y-4 mt-4">
-            <div><Label>Name</Label><Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="mt-2" /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <div><Label>Duration (min)</Label><Input type="number" value={formData.duration} onChange={(e) => setFormData({ ...formData, duration: e.target.value })} className="mt-2" /></div>
-              <div><Label>Price (€)</Label><Input type="number" value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })} className="mt-2" /></div>
+      <Dialog open={isCreating || !!editing} onOpenChange={() => { setIsCreating(false); setEditing(null); }}>
+        <DialogContent className="bg-white rounded-2xl max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold" style={{ fontFamily: "'Outfit', sans-serif" }}>
+              {isCreating ? "New Service" : "Edit Service"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div><Label className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B]">Name</Label>
+              <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="mt-1.5" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B]">Duration (min)</Label>
+                <Input type="number" value={form.duration} onChange={e => setForm({ ...form, duration: e.target.value })} className="mt-1.5" /></div>
+              <div><Label className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B]">Price (€)</Label>
+                <Input type="number" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className="mt-1.5" /></div>
             </div>
-            <div><Label>Category</Label><select value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} className="w-full mt-2 px-3 py-2 border border-gray-200 rounded-lg"><option>Hair</option><option>Beard</option><option>VIP</option><option>Care</option></select></div>
-            <div><Label>Description</Label><Textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} rows={3} className="mt-2" /></div>
-            <div className="flex gap-3 pt-4">
-              <button onClick={() => { setIsCreating(false); setEditingService(null); }} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg">Cancel</button>
-              <button onClick={isCreating ? handleCreate : handleUpdate} className="flex-1 px-4 py-2 bg-[#E63329] text-white rounded-lg shadow-md">{isCreating ? "Create" : "Update"}</button>
+            <div><Label className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B]">Category</Label>
+              <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}
+                className="mt-1.5 w-full px-3 py-2 bg-[#F5F5F7] border border-black/[0.06] rounded-xl text-sm text-[#1D1D1F] focus:outline-none focus:ring-2 focus:ring-black/10">
+                {CATS.map(c => <option key={c}>{c}</option>)}
+              </select></div>
+            <div><Label className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B]">Description</Label>
+              <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={2} className="mt-1.5" /></div>
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => { setIsCreating(false); setEditing(null); }} className="flex-1 py-2.5 border border-black/[0.10] rounded-xl text-sm text-[#86868B] hover:bg-[#F5F5F7] transition-colors">Cancel</button>
+              <button onClick={save} className="flex-1 py-2.5 bg-[#1D1D1F] text-white rounded-xl text-sm font-semibold hover:bg-[#333] transition-colors">
+                {isCreating ? "Create" : "Save changes"}
+              </button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
 
-// Barbers Tab Component
+// ─── BARBERS ─────────────────────────────────────────────────────────────────
 function BarbersTab({ barbers, services, token, onRefresh }) {
+  const blank = { name: "", role: "", bio: "", image: "", service_ids: [] };
   const [isCreating, setIsCreating] = useState(false);
-  const [editingBarber, setEditingBarber] = useState(null);
-  const [formData, setFormData] = useState({ name: "", role: "", bio: "", image: "", service_ids: [] });
+  const [editing, setEditing]       = useState(null);
+  const [form, setForm]             = useState(blank);
 
-  const openCreateDialog = () => {
-    setFormData({ name: "", role: "", bio: "", image: "", service_ids: [] });
-    setIsCreating(true);
-  };
+  const openCreate = () => { setForm(blank); setIsCreating(true); };
+  const openEdit   = (b) => { setForm({ name: b.name, role: b.role, bio: b.bio, image: b.image, service_ids: b.service_ids || [] }); setEditing(b); };
 
-  const openEditDialog = (barber) => {
-    setFormData({
-      name: barber.name,
-      role: barber.role,
-      bio: barber.bio,
-      image: barber.image,
-      service_ids: barber.service_ids || [],
-    });
-    setEditingBarber(barber);
-  };
+  const toggleSvc = (id) => setForm(f => ({
+    ...f,
+    service_ids: f.service_ids.includes(id) ? f.service_ids.filter(x => x !== id) : [...f.service_ids, id],
+  }));
 
-  const toggleService = (sid) => {
-    setFormData((cur) => ({
-      ...cur,
-      service_ids: cur.service_ids.includes(sid)
-        ? cur.service_ids.filter((x) => x !== sid)
-        : [...cur.service_ids, sid],
-    }));
-  };
-
-  const selectAllServices = () => setFormData((cur) => ({ ...cur, service_ids: [] }));
-
-  const handleCreate = async () => {
+  const save = async () => {
     try {
-      await axios.post(`${API}/admin/barbers`, formData, { headers: { Authorization: `Bearer ${token}` } });
-      toast.success("Barber added");
-      setIsCreating(false);
+      if (isCreating) {
+        await axios.post(`${API}/admin/barbers`, form, { headers: authH(token) });
+        toast.success("Barber added"); setIsCreating(false);
+      } else {
+        await axios.put(`${API}/admin/barbers/${editing.id}`, form, { headers: authH(token) });
+        toast.success("Barber updated"); setEditing(null);
+      }
       onRefresh();
-    } catch (error) {
-      toast.error(error?.response?.data?.detail || "Failed to create");
-    }
+    } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
   };
 
-  const handleUpdate = async () => {
+  const del = async (id) => {
+    if (!window.confirm("Delete this barber?")) return;
     try {
-      await axios.put(`${API}/admin/barbers/${editingBarber.id}`, formData, { headers: { Authorization: `Bearer ${token}` } });
-      toast.success("Barber updated");
-      setEditingBarber(null);
-      onRefresh();
-    } catch (error) {
-      toast.error("Failed to update");
-    }
-  };
-
-  const handleDelete = async (barberId) => {
-    if (!confirm("Delete this barber?")) return;
-    try {
-      await axios.delete(`${API}/admin/barbers/${barberId}`, { headers: { Authorization: `Bearer ${token}` } });
-      toast.success("Barber deleted");
-      onRefresh();
-    } catch (error) {
-      toast.error("Failed to delete");
-    }
+      await axios.delete(`${API}/admin/barbers/${id}`, { headers: authH(token) });
+      toast.success("Deleted"); onRefresh();
+    } catch { toast.error("Failed to delete"); }
   };
 
   return (
-    <>
-      <div className="mb-4 flex justify-end">
-        <button onClick={openCreateDialog} className="px-6 py-3 bg-[#E63329] text-white rounded-lg font-display uppercase text-sm hover:bg-[#d62d25] shadow-lg flex items-center gap-2"><Plus size={16} /> Add Barber</button>
+    <div className="space-y-4" data-testid="barbers-tab">
+      <div className="flex justify-end">
+        <button onClick={openCreate} data-testid="add-barber-btn"
+          className="flex items-center gap-2 px-4 py-2.5 bg-[#1D1D1F] text-white rounded-xl text-sm font-semibold hover:bg-[#333] transition-all shadow-[0_4px_14px_rgba(0,0,0,0.10)]"
+          style={{ fontFamily: "'Outfit', sans-serif" }}>
+          <Plus size={15} /> Add Barber
+        </button>
       </div>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {barbers.map((barber) => (
-          <div key={barber.id} className="bg-white rounded-xl overflow-hidden border border-gray-200 hover:shadow-lg transition-all">
-            <div className="aspect-[3/4] bg-gray-900 overflow-hidden">
-              <img src={barber.image} alt={barber.name} className="w-full h-full object-cover" style={{ filter: "grayscale(100%)" }} />
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {barbers.map(b => (
+          <div key={b.id} data-testid={`barber-card-${b.id}`}
+            className="bg-white rounded-2xl border border-black/[0.06] overflow-hidden shadow-[0_1px_6px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow">
+            <div className="aspect-[4/3] bg-[#111] overflow-hidden">
+              <img src={b.image} alt={b.name} className="w-full h-full object-cover" style={{ filter: "grayscale(100%)" }} />
             </div>
             <div className="p-4">
-              <h3 className="font-display uppercase text-base">{barber.name}</h3>
-              <p className="text-xs text-gray-500 uppercase tracking-wider mt-1">{barber.role}</p>
-              <p className="text-sm text-gray-600 mt-2 line-clamp-2">{barber.bio}</p>
-              <div className="flex gap-2 mt-4">
-                <button onClick={() => openEditDialog(barber)} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"><Edit size={14} className="inline mr-1" />Edit</button>
-                <button onClick={() => handleDelete(barber.id)} className="flex-1 px-3 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700"><Trash2 size={14} className="inline mr-1" />Delete</button>
+              <div className="font-bold text-sm text-[#1D1D1F]" style={{ fontFamily: "'Outfit', sans-serif" }}>{b.name}</div>
+              <div className="font-mono text-[0.6rem] uppercase tracking-wider text-[#86868B] mt-0.5">{b.role}</div>
+              <p className="text-xs text-[#86868B] mt-2 line-clamp-2">{b.bio}</p>
+              <div className="flex gap-2 mt-3">
+                <button onClick={() => openEdit(b)} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border border-black/[0.10] rounded-lg text-xs hover:bg-[#F5F5F7] transition-colors">
+                  <Edit2 size={12} /> Edit
+                </button>
+                <button onClick={() => del(b.id)} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs hover:bg-red-100 transition-colors">
+                  <Trash2 size={12} /> Delete
+                </button>
               </div>
             </div>
           </div>
         ))}
       </div>
 
-      <Dialog open={isCreating || !!editingBarber} onOpenChange={() => { setIsCreating(false); setEditingBarber(null); }}>
-        <DialogContent className="bg-white rounded-2xl border border-gray-200 shadow-2xl max-w-2xl">
-          <DialogHeader><DialogTitle className="title-massive text-2xl">{isCreating ? "Add" : "Edit"} Barber<span className="text-[#86868B]">.</span></DialogTitle></DialogHeader>
-          <div className="space-y-4 mt-4">
-            <div><Label>Name</Label><Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="mt-2" /></div>
-            <div><Label>Role</Label><Input value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value })} className="mt-2" placeholder="e.g. Master Barber, Founder" /></div>
-            <div><Label>Bio</Label><Textarea value={formData.bio} onChange={(e) => setFormData({ ...formData, bio: e.target.value })} rows={3} className="mt-2" /></div>
-            <div><Label>Image URL</Label><Input value={formData.image} onChange={(e) => setFormData({ ...formData, image: e.target.value })} className="mt-2" placeholder="https://..." /></div>
+      <Dialog open={isCreating || !!editing} onOpenChange={() => { setIsCreating(false); setEditing(null); }}>
+        <DialogContent className="bg-white rounded-2xl max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold" style={{ fontFamily: "'Outfit', sans-serif" }}>
+              {isCreating ? "Add Barber" : "Edit Barber"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div><Label className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B]">Name</Label>
+              <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="mt-1.5" /></div>
+            <div><Label className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B]">Role</Label>
+              <Input value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} className="mt-1.5" placeholder="e.g. Master Barber, Founder" /></div>
+            <div><Label className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B]">Bio</Label>
+              <Textarea value={form.bio} onChange={e => setForm({ ...form, bio: e.target.value })} rows={2} className="mt-1.5" /></div>
+            <div><Label className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B]">Image URL</Label>
+              <Input value={form.image} onChange={e => setForm({ ...form, image: e.target.value })} className="mt-1.5" placeholder="https://..." /></div>
 
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <Label>Services offered</Label>
-                <button
-                  type="button"
-                  onClick={selectAllServices}
-                  className="text-xs font-mono uppercase tracking-wider text-[#86868B] hover:underline"
-                  data-testid="barber-all-services"
-                >
+              <div className="flex items-center justify-between mb-1.5">
+                <Label className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B]">Services Offered</Label>
+                <button type="button" onClick={() => setForm(f => ({ ...f, service_ids: [] }))}
+                  className="text-xs text-[#86868B] hover:text-[#1D1D1F] font-mono uppercase tracking-wider transition-colors"
+                  data-testid="barber-all-services">
                   All services
                 </button>
               </div>
-              <p className="text-xs text-gray-500 mb-2">
-                {formData.service_ids.length === 0
-                  ? "Currently offers ALL services. Pick specific ones to restrict."
-                  : `Offers ${formData.service_ids.length} of ${services.length} services.`}
+              <p className="text-xs text-[#A1A1A6] mb-2">
+                {form.service_ids.length === 0 ? "Offering all services." : `${form.service_ids.length} of ${services.length} selected.`}
               </p>
-              <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border border-gray-200 rounded-lg bg-gray-50" data-testid="barber-services-list">
-                {services.map((s) => {
-                  const checked = formData.service_ids.includes(s.id);
+              <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto p-1 border border-black/[0.06] rounded-xl bg-[#F5F5F7]" data-testid="barber-services-list">
+                {services.map(s => {
+                  const on = form.service_ids.includes(s.id);
                   return (
-                    <label
-                      key={s.id}
-                      data-testid={`barber-svc-${s.id}`}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm transition-colors ${checked ? "bg-[#E63329] text-white" : "bg-white border border-gray-200 hover:border-gray-300"}`}
-                    >
-                      <input
-                        type="checkbox"
-                        className="hidden"
-                        checked={checked}
-                        onChange={() => toggleService(s.id)}
-                      />
-                      <span className="truncate">{s.name}</span>
-                      <span className={`ml-auto text-xs font-mono ${checked ? "text-white/80" : "text-gray-400"}`}>€{s.price}</span>
+                    <label key={s.id} data-testid={`barber-svc-${s.id}`}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-xs transition-all ${on ? "bg-[#1D1D1F] text-white" : "bg-white border border-black/[0.06] hover:border-black/[0.12]"}`}>
+                      <input type="checkbox" className="hidden" checked={on} onChange={() => toggleSvc(s.id)} />
+                      <span className="truncate flex-1">{s.name}</span>
+                      {on && <Check size={11} className="shrink-0" />}
                     </label>
                   );
                 })}
               </div>
             </div>
 
-            <div className="flex gap-3 pt-4">
-              <button onClick={() => { setIsCreating(false); setEditingBarber(null); }} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg">Cancel</button>
-              <button onClick={isCreating ? handleCreate : handleUpdate} className="flex-1 px-4 py-2 bg-[#E63329] text-white rounded-lg shadow-md">{isCreating ? "Add" : "Update"}</button>
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => { setIsCreating(false); setEditing(null); }} className="flex-1 py-2.5 border border-black/[0.10] rounded-xl text-sm text-[#86868B] hover:bg-[#F5F5F7] transition-colors">Cancel</button>
+              <button onClick={save} className="flex-1 py-2.5 bg-[#1D1D1F] text-white rounded-xl text-sm font-semibold hover:bg-[#333] transition-colors">
+                {isCreating ? "Add Barber" : "Save changes"}
+              </button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
 
-function StatCard({ label, value, icon, color = "red" }) {
-  const colors = {
-    red: "text-[#86868B]",
-    green: "text-green-600",
-    blue: "text-blue-600",
-    purple: "text-purple-600"
+// ─── SCHEDULES / AVAILABILITY ─────────────────────────────────────────────────
+const DEFAULT_SLOTS = [
+  "11:00","11:30","12:00","12:30","13:00","13:30",
+  "14:00","14:30","15:00","15:30","16:00","16:30",
+  "17:00","17:30","18:00","18:30","19:00","19:30",
+  "20:00","20:30",
+];
+
+function SchedulesTab({ barbers, token }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [barberId, setBarberId] = useState(barbers[0]?.id || "");
+  const [date, setDate]         = useState(today);
+  const [slots, setSlots]       = useState([]);
+  const [notes, setNotes]       = useState("");
+  const [isDefault, setIsDefault] = useState(true);
+  const [loading, setLoading]   = useState(false);
+  const [saving, setSaving]     = useState(false);
+  const [newSlot, setNewSlot]   = useState("");
+
+  useEffect(() => { if (barbers.length && !barberId) setBarberId(barbers[0].id); }, [barbers]); // eslint-disable-line
+
+  useEffect(() => {
+    if (!barberId || !date) return;
+    setLoading(true);
+    axios.get(`${API}/admin/schedules/${barberId}/${date}`, { headers: authH(token) })
+      .then(r => { setSlots(r.data.time_slots || []); setNotes(r.data.notes || ""); setIsDefault(!!r.data.is_default); })
+      .catch(() => toast.error("Failed to load schedule"))
+      .finally(() => setLoading(false));
+  }, [barberId, date]); // eslint-disable-line
+
+  const toggle = (t) => setSlots(s => s.includes(t) ? s.filter(x => x !== t) : [...s, t].sort());
+
+  const addCustom = () => {
+    const v = newSlot.trim();
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(v)) { toast.error("Use HH:MM"); return; }
+    if (slots.includes(v)) { toast.error("Already exists"); return; }
+    setSlots(s => [...s, v].sort()); setNewSlot("");
   };
-  
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await axios.post(`${API}/admin/schedules`, { barber_id: barberId, date, time_slots: slots, notes: notes || null }, { headers: authH(token) });
+      toast.success("Schedule saved"); setIsDefault(false);
+    } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
+    finally { setSaving(false); }
+  };
+
+  const reset = async () => {
+    if (isDefault) { toast.info("Already default"); return; }
+    if (!window.confirm("Revert to default hours?")) return;
+    try {
+      await axios.delete(`${API}/admin/schedules/${barberId}/${date}`, { headers: authH(token) });
+      toast.success("Reverted to default");
+      const r = await axios.get(`${API}/admin/schedules/${barberId}/${date}`, { headers: authH(token) });
+      setSlots(r.data.time_slots || []); setNotes(r.data.notes || ""); setIsDefault(true);
+    } catch { toast.error("Failed to reset"); }
+  };
+
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="font-mono text-xs uppercase tracking-wider text-gray-500">{label}</div>
-          <div className="title-massive text-4xl mt-2">{value}</div>
+    <div className="space-y-5" data-testid="schedules-tab">
+      {/* Controls */}
+      <div className="bg-white rounded-2xl border border-black/[0.06] p-4 flex flex-wrap gap-4 items-end shadow-[0_1px_6px_rgba(0,0,0,0.04)]">
+        <div className="flex-1 min-w-[160px]">
+          <label className="block font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B] mb-1.5">Barber</label>
+          <select value={barberId} onChange={e => setBarberId(e.target.value)} data-testid="sched-barber-select"
+            className="w-full px-3 py-2 bg-[#F5F5F7] border border-black/[0.06] rounded-xl text-sm text-[#1D1D1F] focus:outline-none focus:ring-2 focus:ring-black/10">
+            {barbers.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
         </div>
-        <div className={colors[color]}>{icon}</div>
+        <div className="flex-1 min-w-[160px]">
+          <label className="block font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B] mb-1.5">Date</label>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} data-testid="sched-date-input"
+            className="w-full px-3 py-2 bg-[#F5F5F7] border border-black/[0.06] rounded-xl text-sm text-[#1D1D1F] focus:outline-none focus:ring-2 focus:ring-black/10" />
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setSlots([...DEFAULT_SLOTS])} data-testid="sched-apply-template"
+            className="px-3.5 py-2 bg-[#F5F5F7] text-[#1D1D1F] rounded-xl text-xs font-mono uppercase tracking-wider hover:bg-[#ECECEE] transition-colors">
+            Full day
+          </button>
+          <button onClick={() => setSlots([])} data-testid="sched-close-day"
+            className="px-3.5 py-2 bg-red-50 text-red-600 border border-red-200 rounded-xl text-xs font-mono uppercase tracking-wider hover:bg-red-100 transition-colors">
+            Close day
+          </button>
+        </div>
+        <span className={`px-3 py-1.5 rounded-full font-mono text-[0.58rem] uppercase tracking-wider ${isDefault ? "bg-blue-50 text-blue-600 border border-blue-200" : "bg-green-50 text-green-600 border border-green-200"}`}>
+          {isDefault ? "Default" : "Custom"}
+        </span>
+      </div>
+
+      {/* Slot grid */}
+      <div className="bg-white rounded-2xl border border-black/[0.06] p-5 shadow-[0_1px_6px_rgba(0,0,0,0.04)]">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-semibold text-sm text-[#1D1D1F]" style={{ fontFamily: "'Outfit', sans-serif" }}>Time Slots</h3>
+            <p className="text-xs text-[#86868B] mt-0.5">{slots.length} slot{slots.length !== 1 ? "s" : ""} active</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <input value={newSlot} onChange={e => setNewSlot(e.target.value)} data-testid="sched-new-slot"
+              placeholder="HH:MM" className="w-20 px-2.5 py-1.5 bg-[#F5F5F7] border border-black/[0.06] rounded-lg text-xs text-[#1D1D1F] focus:outline-none focus:ring-2 focus:ring-black/10"
+              onKeyDown={e => e.key === "Enter" && addCustom()} />
+            <button onClick={addCustom} data-testid="sched-add-slot"
+              className="flex items-center gap-1 px-3 py-1.5 bg-[#1D1D1F] text-white rounded-lg text-xs font-mono hover:bg-[#333] transition-colors">
+              <Plus size={12} /> Add
+            </button>
+          </div>
+        </div>
+
+        {loading
+          ? <div className="py-8 flex justify-center"><Loader2 size={20} className="animate-spin text-[#A1A1A6]" /></div>
+          : <>
+              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2" data-testid="sched-slot-grid">
+                {Array.from(new Set([...DEFAULT_SLOTS, ...slots])).sort().map(t => {
+                  const on = slots.includes(t);
+                  return (
+                    <button key={t} data-testid={`sched-slot-${t}`} onClick={() => toggle(t)}
+                      className={`py-2.5 rounded-xl text-xs font-mono transition-all ${on ? "bg-[#1D1D1F] text-white shadow-sm" : "bg-[#F5F5F7] text-[#A1A1A6] hover:bg-[#ECECEE] line-through"}`}>
+                      {t}
+                    </button>
+                  );
+                })}
+              </div>
+              {slots.length === 0 && (
+                <div className="mt-3 flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl p-3">
+                  <AlertCircle size={14} /> No slots — this day will appear as closed.
+                </div>
+              )}
+            </>}
+      </div>
+
+      {/* Notes + actions */}
+      <div className="bg-white rounded-2xl border border-black/[0.06] p-5 shadow-[0_1px_6px_rgba(0,0,0,0.04)]">
+        <label className="block font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B] mb-1.5">Internal Note (optional)</label>
+        <Textarea value={notes} onChange={e => setNotes(e.target.value)} data-testid="sched-notes" rows={2}
+          placeholder="e.g. Holiday, half-day, training" className="text-sm" />
+      </div>
+
+      <div className="flex gap-3 justify-end">
+        <button onClick={reset} disabled={isDefault} data-testid="sched-reset"
+          className="px-5 py-2.5 border border-black/[0.10] rounded-xl text-sm text-[#86868B] hover:bg-[#F5F5F7] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+          Reset to default
+        </button>
+        <button onClick={save} disabled={saving} data-testid="sched-save"
+          className="flex items-center gap-2 px-5 py-2.5 bg-[#1D1D1F] text-white rounded-xl text-sm font-semibold hover:bg-[#333] disabled:opacity-50 transition-colors shadow-[0_4px_14px_rgba(0,0,0,0.10)]">
+          {saving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : <><CalendarCheck size={14} /> Save Schedule</>}
+        </button>
       </div>
     </div>
   );
 }
 
+// ─── INSTAGRAM ───────────────────────────────────────────────────────────────
+function InstagramTab({ token, onRefresh }) {
+  const blank = { image_url: "", caption: "", post_url: "" };
+  const [posts, setPosts]       = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
+  const [editing, setEditing]   = useState(null);
+  const [form, setForm]         = useState(blank);
 
-// ---------------------------------------------------------------------
-// Availability / Schedules tab
-// ---------------------------------------------------------------------
-const DEFAULT_TEMPLATE = [
-  "10:00", "10:30", "11:00", "11:30", "12:00", "12:30",
-  "13:00", "13:30", "14:00", "14:30", "15:00", "15:30",
-  "16:00", "16:30", "17:00", "17:30", "18:00", "18:30",
-  "19:00", "19:30", "20:00",
-];
-
-function SchedulesTab({ barbers, token }) {
-  const todayISO = new Date().toISOString().slice(0, 10);
-  const [barberId, setBarberId] = useState("");
-  const [date, setDate] = useState(todayISO);
-  const [slots, setSlots] = useState([]);
-  const [notes, setNotes] = useState("");
-  const [isDefault, setIsDefault] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [newSlot, setNewSlot] = useState("");
-
-  useEffect(() => {
-    if (barbers.length > 0 && !barberId) setBarberId(barbers[0].id);
-  }, [barbers, barberId]);
-
-  const loadSchedule = async () => {
-    if (!barberId || !date) return;
+  const load = async () => {
     setLoading(true);
     try {
-      const { data } = await axios.get(`${API}/admin/schedules/${barberId}/${date}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setSlots(data.time_slots || []);
-      setNotes(data.notes || "");
-      setIsDefault(!!data.is_default);
-    } catch (e) {
-      toast.error("Failed to load schedule");
-    } finally {
-      setLoading(false);
-    }
+      const { data } = await axios.get(`${API}/admin/instagram-posts`, { headers: authH(token) });
+      setPosts(data);
+    } catch { toast.error("Failed to load posts"); }
+    finally { setLoading(false); }
   };
 
-  useEffect(() => { loadSchedule(); /* eslint-disable-next-line */ }, [barberId, date]);
+  useEffect(() => { load(); }, []); // eslint-disable-line
 
-  const toggleSlot = (t) => {
-    setSlots((cur) => cur.includes(t) ? cur.filter((s) => s !== t) : [...cur, t].sort());
-  };
-
-  const addCustomSlot = () => {
-    const v = newSlot.trim();
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(v)) {
-      toast.error("Use HH:MM (e.g. 09:45)");
-      return;
-    }
-    if (slots.includes(v)) {
-      toast.error("Slot already exists");
-      return;
-    }
-    setSlots([...slots, v].sort());
-    setNewSlot("");
-  };
+  const openCreate = () => { setForm(blank); setIsCreating(true); };
+  const openEdit   = (p) => { setForm({ image_url: p.image_url, caption: p.caption || "", post_url: p.post_url || "" }); setEditing(p); };
 
   const save = async () => {
-    if (!barberId || !date) return;
-    setSaving(true);
+    if (!form.image_url) { toast.error("Image URL required"); return; }
     try {
-      await axios.post(`${API}/admin/schedules`, {
-        barber_id: barberId, date, time_slots: slots, notes: notes || null,
-      }, { headers: { Authorization: `Bearer ${token}` } });
-      toast.success("Schedule saved");
-      setIsDefault(false);
-    } catch (e) {
-      toast.error(e?.response?.data?.detail || "Failed to save schedule");
-    } finally {
-      setSaving(false);
-    }
+      if (isCreating) {
+        await axios.post(`${API}/admin/instagram-posts`, form, { headers: authH(token) });
+        toast.success("Post added"); setIsCreating(false);
+      } else {
+        await axios.patch(`${API}/admin/instagram-posts/${editing.id}`, form, { headers: authH(token) });
+        toast.success("Post updated"); setEditing(null);
+      }
+      load(); onRefresh();
+    } catch { toast.error("Failed"); }
   };
 
-  const resetToDefault = async () => {
-    if (isDefault) {
-      toast.info("Already on default schedule");
-      return;
-    }
-    if (!confirm("Revert to default hours for this date?")) return;
+  const del = async (id) => {
+    if (!window.confirm("Delete this post?")) return;
     try {
-      await axios.delete(`${API}/admin/schedules/${barberId}/${date}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      toast.success("Reverted to default");
-      loadSchedule();
-    } catch (e) {
-      toast.error("Failed to reset");
-    }
+      await axios.delete(`${API}/admin/instagram-posts/${id}`, { headers: authH(token) });
+      toast.success("Deleted"); load(); onRefresh();
+    } catch { toast.error("Failed to delete"); }
   };
 
-  const closeDay = () => setSlots([]);
-  const applyTemplate = () => setSlots([...DEFAULT_TEMPLATE]);
+  if (loading) return <div className="flex justify-center py-16"><Loader2 size={24} className="animate-spin text-[#A1A1A6]" /></div>;
 
   return (
-    <div className="space-y-6" data-testid="schedules-tab">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="title-massive text-3xl">Availability<span className="text-[#86868B]">.</span></h2>
-          <p className="text-sm text-gray-500 mt-1">Pick a barber and a date to manage time slots.</p>
-        </div>
-        <span className={`text-xs font-mono uppercase tracking-wider px-3 py-1.5 rounded-full ${isDefault ? "bg-blue-50 text-blue-700" : "bg-green-50 text-green-700"}`}>
-          {isDefault ? "Default hours" : "Custom schedule"}
-        </span>
+    <div className="space-y-4" data-testid="instagram-tab">
+      <div className="flex justify-end">
+        <button onClick={openCreate}
+          className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl text-sm font-semibold hover:from-purple-700 hover:to-pink-700 transition-all shadow-[0_4px_14px_rgba(0,0,0,0.10)]"
+          style={{ fontFamily: "'Outfit', sans-serif" }}>
+          <Plus size={15} /> Add Post
+        </button>
       </div>
 
-      {/* Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-5 bg-white rounded-xl border border-gray-200">
-        <div>
-          <Label className="font-mono text-[0.66rem] uppercase tracking-wider text-gray-600">Barber</Label>
-          <select
-            data-testid="sched-barber-select"
-            value={barberId}
-            onChange={(e) => setBarberId(e.target.value)}
-            className="mt-2 w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm"
-          >
-            {barbers.map((b) => (<option key={b.id} value={b.id}>{b.name}</option>))}
-          </select>
-        </div>
-        <div>
-          <Label className="font-mono text-[0.66rem] uppercase tracking-wider text-gray-600">Date</Label>
-          <Input
-            data-testid="sched-date-input"
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="mt-2"
-          />
-        </div>
-        <div className="flex items-end gap-2">
-          <button
-            data-testid="sched-apply-template"
-            onClick={applyTemplate}
-            className="flex-1 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-display uppercase transition-colors"
-          >
-            Full template
-          </button>
-          <button
-            data-testid="sched-close-day"
-            onClick={closeDay}
-            className="flex-1 px-3 py-2 bg-red-50 text-red-700 hover:bg-red-100 rounded-lg text-sm font-display uppercase transition-colors"
-          >
-            Close day
-          </button>
-        </div>
-      </div>
-
-      {/* Slots */}
-      <div className="p-5 bg-white rounded-xl border border-gray-200">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-display uppercase text-base">Time Slots ({slots.length})</h3>
-          <div className="flex items-center gap-2">
-            <Input
-              data-testid="sched-new-slot"
-              placeholder="HH:MM"
-              value={newSlot}
-              onChange={(e) => setNewSlot(e.target.value)}
-              className="w-24 h-9 text-sm"
-            />
-            <button
-              data-testid="sched-add-slot"
-              onClick={addCustomSlot}
-              className="px-3 py-2 bg-black text-white rounded-lg text-xs font-display uppercase hover:bg-gray-800 transition-colors flex items-center gap-1"
-            >
-              <Plus size={14} /> Add
-            </button>
+      {posts.length === 0
+        ? <div className="bg-white rounded-2xl border border-black/[0.06] p-12 text-center">
+            <Instagram size={40} className="mx-auto text-[#C5C5C7] mb-3" />
+            <p className="text-sm text-[#86868B]">No posts yet. Add your first one.</p>
           </div>
-        </div>
+        : <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {posts.map(p => (
+              <div key={p.id} className="bg-white rounded-2xl border border-black/[0.06] overflow-hidden shadow-[0_1px_6px_rgba(0,0,0,0.04)] hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow">
+                <div className="aspect-square bg-[#111] overflow-hidden">
+                  <img src={p.image_url} alt={p.caption || "Post"} className="w-full h-full object-cover" />
+                </div>
+                <div className="p-3">
+                  {p.caption && <p className="text-xs text-[#86868B] line-clamp-2 mb-3">{p.caption}</p>}
+                  <div className="flex gap-2">
+                    <button onClick={() => openEdit(p)} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 border border-black/[0.10] rounded-lg text-xs hover:bg-[#F5F5F7] transition-colors">
+                      <Edit2 size={11} /> Edit
+                    </button>
+                    <button onClick={() => del(p.id)} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs hover:bg-red-100 transition-colors">
+                      <Trash2 size={11} /> Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>}
 
-        {loading ? (
-          <div className="py-10 flex items-center justify-center text-gray-500"><Loader2 className="animate-spin mr-2" size={16} /> Loading…</div>
-        ) : (
-          <>
-            {/* Quick palette - tap to toggle from default template */}
-            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2" data-testid="sched-slot-grid">
-              {Array.from(new Set([...DEFAULT_TEMPLATE, ...slots])).sort().map((t) => {
-                const active = slots.includes(t);
-                return (
-                  <button
-                    key={t}
-                    data-testid={`sched-slot-${t}`}
-                    onClick={() => toggleSlot(t)}
-                    className={`py-2 rounded-lg text-sm font-mono transition-all ${
-                      active
-                        ? "bg-[#E63329] text-white shadow-md"
-                        : "bg-gray-50 text-gray-400 hover:bg-gray-100 line-through"
-                    }`}
-                  >
-                    {t}
-                  </button>
-                );
-              })}
-            </div>
-            {slots.length === 0 && (
-              <p className="mt-4 text-sm text-red-600">⚠ No slots = closed for this date.</p>
+      <Dialog open={isCreating || !!editing} onOpenChange={() => { setIsCreating(false); setEditing(null); }}>
+        <DialogContent className="bg-white rounded-2xl max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold" style={{ fontFamily: "'Outfit', sans-serif" }}>
+              {isCreating ? "Add Post" : "Edit Post"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            <div><Label className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B]">Image URL *</Label>
+              <Input value={form.image_url} onChange={e => setForm({ ...form, image_url: e.target.value })} className="mt-1.5" placeholder="https://..." /></div>
+            <div><Label className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B]">Caption</Label>
+              <Textarea value={form.caption} onChange={e => setForm({ ...form, caption: e.target.value })} rows={2} className="mt-1.5" /></div>
+            <div><Label className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B]">Instagram Post URL</Label>
+              <Input value={form.post_url} onChange={e => setForm({ ...form, post_url: e.target.value })} className="mt-1.5" placeholder="https://instagram.com/p/..." /></div>
+            {form.image_url && (
+              <div className="aspect-square rounded-xl overflow-hidden border border-black/[0.06]">
+                <img src={form.image_url} alt="Preview" className="w-full h-full object-cover" />
+              </div>
             )}
-          </>
-        )}
-      </div>
-
-      {/* Notes */}
-      <div className="p-5 bg-white rounded-xl border border-gray-200">
-        <Label className="font-mono text-[0.66rem] uppercase tracking-wider text-gray-600">Notes (optional)</Label>
-        <Textarea
-          data-testid="sched-notes"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          rows={2}
-          placeholder="Internal note for this date (e.g. holiday, half-day)"
-          className="mt-2"
-        />
-      </div>
-
-      {/* Actions */}
-      <div className="flex flex-wrap gap-3 justify-end">
-        <button
-          data-testid="sched-reset"
-          onClick={resetToDefault}
-          disabled={isDefault}
-          className="px-5 py-2.5 border border-gray-300 rounded-lg font-display uppercase text-sm hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          Reset to default
-        </button>
-        <button
-          data-testid="sched-save"
-          onClick={save}
-          disabled={saving}
-          className="px-5 py-2.5 bg-[#E63329] text-white rounded-lg font-display uppercase text-sm hover:bg-[#d62d25] disabled:opacity-50 transition-colors flex items-center gap-2"
-        >
-          {saving ? <><Loader2 className="animate-spin" size={14} /> Saving…</> : <><CalendarCheck size={14} /> Save schedule</>}
-        </button>
-      </div>
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => { setIsCreating(false); setEditing(null); }} className="flex-1 py-2.5 border border-black/[0.10] rounded-xl text-sm text-[#86868B] hover:bg-[#F5F5F7] transition-colors">Cancel</button>
+              <button onClick={save} className="flex-1 py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl text-sm font-semibold hover:from-purple-700 hover:to-pink-700 transition-all">
+                {isCreating ? "Add Post" : "Save changes"}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

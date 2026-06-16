@@ -9,22 +9,23 @@ import { BookingProvider } from "@/contexts/BookingContext";
 
 function App() {
   useEffect(() => {
-    // Prevent browser from restoring a stale scroll position — the GSAP hero
-    // scrub must always start from the top.
     if ("scrollRestoration" in window.history) {
       window.history.scrollRestoration = "manual";
     }
   }, []);
+
   return (
     <BookingProvider>
       <div className="App">
         <BrowserRouter>
           <Routes>
+            {/* Public site — wrapped in Layout (Nav + Footer) */}
             <Route element={<Layout />}>
               <Route path="/" element={<Home />} />
-              <Route path="/admin" element={<AdminLogin />} />
-              <Route path="/admin/dashboard" element={<AdminDashboard />} />
             </Route>
+            {/* Admin — completely standalone, no site Nav/Footer */}
+            <Route path="/admin" element={<AdminLogin />} />
+            <Route path="/admin/dashboard" element={<AdminDashboard />} />
           </Routes>
         </BrowserRouter>
       </div>
