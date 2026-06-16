@@ -12,6 +12,14 @@ import { useBooking } from "@/contexts/BookingContext";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
+// Returns current date + time in Greece (Europe/Athens) as { dateStr: "YYYY-MM-DD", timeStr: "HH:MM" }
+function getGreeceNow() {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-CA", { timeZone: "Europe/Athens" }); // "YYYY-MM-DD"
+  const timeStr = now.toLocaleTimeString("en-GB", { timeZone: "Europe/Athens", hour: "2-digit", minute: "2-digit", hour12: false }); // "HH:MM"
+  return { dateStr, timeStr };
+}
+
 const STEPS = [
   { label: "Service",     icon: Scissors,      heading: "Service" },
   { label: "Barber",      icon: User,          heading: "Barber" },
@@ -314,49 +322,62 @@ export default function BookingModal() {
                     )}
 
                     {step === 2 && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="step-datetime">
-                        <div className="rounded-2xl border border-black/[0.06] p-4 md:p-5 bg-[#F5F5F7]">
-                          <div className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B] mb-3">Pick a date</div>
-                          <Calendar
-                            mode="single"
-                            selected={date}
-                            onSelect={(d) => { setDate(d); setTime(""); }}
-                            disabled={disabled}
-                            className="text-[#1D1D1F]"
-                            data-testid="booking-calendar"
-                          />
+                      (() => {
+                        // Filter past slots when today (Greece) is selected
+                        const { dateStr: greeceToday, timeStr: greeceNow } = getGreeceNow();
+                        const isToday = date && fmtDate(date) === greeceToday;
+                        const visibleSlots = isToday ? slots.filter(t => t > greeceNow) : slots;
+
+                        return (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-testid="step-datetime">
+                          <div className="rounded-2xl border border-black/[0.06] p-4 md:p-5 bg-[#F5F5F7]">
+                            <div className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B] mb-3">Pick a date</div>
+                            <Calendar
+                              mode="single"
+                              selected={date}
+                              onSelect={(d) => { setDate(d); setTime(""); }}
+                              disabled={disabled}
+                              className="text-[#1D1D1F]"
+                              data-testid="booking-calendar"
+                            />
+                          </div>
+                          <div className="rounded-2xl border border-black/[0.06] p-4 md:p-5 bg-[#F5F5F7]">
+                            <div className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B] mb-3">Pick a time</div>
+                            {!date && <p className="text-[#A1A1A6] text-sm">Select a date first.</p>}
+                            {date && loadingSlots && (
+                              <p className="text-[#86868B] text-sm flex items-center gap-2">
+                                <Loader2 size={14} className="animate-spin" /> Loading slots…
+                              </p>
+                            )}
+                            {date && !loadingSlots && visibleSlots.length === 0 && (
+                              <p className="text-[#86868B] text-sm">
+                                {isToday && slots.length > 0
+                                  ? "No more available times for today."
+                                  : "No times available for this day."}
+                              </p>
+                            )}
+                            {date && !loadingSlots && visibleSlots.length > 0 && (
+                              <div className="grid grid-cols-3 gap-2" data-testid="time-slots">
+                                {visibleSlots.map((t) => (
+                                  <button
+                                    key={t}
+                                    data-testid={`slot-${t}`}
+                                    onClick={() => setTime(t)}
+                                    className={`py-3 text-sm font-mono rounded-xl transition-all duration-200 ${
+                                      time === t
+                                        ? "bg-[#1D1D1F] text-white shadow-[0_4px_12px_rgba(0,0,0,0.12)] scale-105"
+                                        : "bg-white border border-black/[0.06] text-[#1D1D1F] hover:border-[#1D1D1F] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
+                                    }`}
+                                  >
+                                    {t}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="rounded-2xl border border-black/[0.06] p-4 md:p-5 bg-[#F5F5F7]">
-                          <div className="font-mono text-[0.62rem] uppercase tracking-wider text-[#86868B] mb-3">Pick a time</div>
-                          {!date && <p className="text-[#A1A1A6] text-sm">Select a date first.</p>}
-                          {date && loadingSlots && (
-                            <p className="text-[#86868B] text-sm flex items-center gap-2">
-                              <Loader2 size={14} className="animate-spin" /> Loading slots…
-                            </p>
-                          )}
-                          {date && !loadingSlots && slots.length === 0 && (
-                            <p className="text-[#86868B] text-sm">No times available for this day.</p>
-                          )}
-                          {date && !loadingSlots && slots.length > 0 && (
-                            <div className="grid grid-cols-3 gap-2" data-testid="time-slots">
-                              {slots.map((t) => (
-                                <button
-                                  key={t}
-                                  data-testid={`slot-${t}`}
-                                  onClick={() => setTime(t)}
-                                  className={`py-3 text-sm font-mono rounded-xl transition-all duration-200 ${
-                                    time === t
-                                      ? "bg-[#1D1D1F] text-white shadow-[0_4px_12px_rgba(0,0,0,0.12)] scale-105"
-                                      : "bg-white border border-black/[0.06] text-[#1D1D1F] hover:border-[#1D1D1F] hover:shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
-                                  }`}
-                                >
-                                  {t}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                        );
+                      })()
                     )}
 
                     {step === 3 && (

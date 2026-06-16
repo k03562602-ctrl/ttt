@@ -16,6 +16,14 @@ import { Textarea } from "@/components/ui/textarea";
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const authH = (t) => ({ Authorization: `Bearer ${t}` });
 
+// Returns current date + time in Greece (Europe/Athens)
+function getGreeceNow() {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-CA", { timeZone: "Europe/Athens" });
+  const timeStr = now.toLocaleTimeString("en-GB", { timeZone: "Europe/Athens", hour: "2-digit", minute: "2-digit", hour12: false });
+  return { dateStr, timeStr };
+}
+
 // ─── NAV ITEMS ───────────────────────────────────────────────────────────────
 const NAV = [
   { id: "overview",   label: "Overview",       icon: LayoutDashboard },
@@ -851,7 +859,12 @@ function SchedulesTab({ barbers, token }) {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="font-semibold text-sm text-[#1D1D1F]" style={{ fontFamily: "'Outfit', sans-serif" }}>Time Slots</h3>
-            <p className="text-xs text-[#86868B] mt-0.5">{slots.length} slot{slots.length !== 1 ? "s" : ""} active</p>
+            <p className="text-xs text-[#86868B] mt-0.5">
+              {slots.length} slot{slots.length !== 1 ? "s" : ""} active
+              {date === getGreeceNow().dateStr && (
+                <span className="ml-2 text-[#A1A1A6]">· faded = past (Greece time)</span>
+              )}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <input value={newSlot} onChange={e => setNewSlot(e.target.value)} data-testid="sched-new-slot"
@@ -868,15 +881,32 @@ function SchedulesTab({ barbers, token }) {
           ? <div className="py-8 flex justify-center"><Loader2 size={20} className="animate-spin text-[#A1A1A6]" /></div>
           : <>
               <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2" data-testid="sched-slot-grid">
-                {Array.from(new Set([...DEFAULT_SLOTS, ...slots])).sort().map(t => {
-                  const on = slots.includes(t);
-                  return (
-                    <button key={t} data-testid={`sched-slot-${t}`} onClick={() => toggle(t)}
-                      className={`py-2.5 rounded-xl text-xs font-mono transition-all ${on ? "bg-[#1D1D1F] text-white shadow-sm" : "bg-[#F5F5F7] text-[#A1A1A6] hover:bg-[#ECECEE] line-through"}`}>
-                      {t}
-                    </button>
-                  );
-                })}
+                {(() => {
+                  const { dateStr: greeceToday, timeStr: greeceNow } = getGreeceNow();
+                  const isToday = date === greeceToday;
+                  return Array.from(new Set([...DEFAULT_SLOTS, ...slots])).sort().map(t => {
+                    const on = slots.includes(t);
+                    const isPast = isToday && t <= greeceNow;
+                    return (
+                      <button key={t} data-testid={`sched-slot-${t}`} onClick={() => toggle(t)}
+                        title={isPast ? "Past slot" : undefined}
+                        className={`py-2.5 rounded-xl text-xs font-mono transition-all relative ${
+                          on
+                            ? isPast
+                              ? "bg-[#1D1D1F]/30 text-white/40 shadow-none cursor-pointer"
+                              : "bg-[#1D1D1F] text-white shadow-sm"
+                            : isPast
+                              ? "bg-[#F5F5F7]/60 text-[#C5C5C7] line-through opacity-40 cursor-pointer"
+                              : "bg-[#F5F5F7] text-[#A1A1A6] hover:bg-[#ECECEE] line-through"
+                        }`}>
+                        {t}
+                        {isPast && (
+                          <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#86868B]/40" />
+                        )}
+                      </button>
+                    );
+                  });
+                })()}
               </div>
               {slots.length === 0 && (
                 <div className="mt-3 flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl p-3">
