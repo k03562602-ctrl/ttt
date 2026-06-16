@@ -1,115 +1,215 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ─────────────────────────────────────────
+   OPTION F — Monochrome Gradient (Apple)
+   ─────────────────────────────────────────
+   White → #F5F5F7 gradient palette
+   #1D1D1F text   #86868B secondary   #F5F5F7 surface
+*/
+
+html { scroll-behavior: smooth; }
+
 body {
     margin: 0;
-    font-family:
-        -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-        "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-        sans-serif;
+    font-family: 'Manrope', 'Helvetica Neue', system-ui, sans-serif;
+    font-weight: 500;
+    background: linear-gradient(180deg, #ffffff 0%, #f5f5f7 60%, #ececee 100%);
+    background-attachment: fixed;
+    color: #1D1D1F;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+    letter-spacing: -0.005em;
 }
 
-code {
-    font-family:
-        source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
+::selection { background: #1D1D1F; color: #fff; }
+
+/* ── Fonts ─────────────────────────────── */
+.font-display { font-family: 'Outfit', 'Helvetica Neue', sans-serif; font-weight: 800; letter-spacing: -0.03em; }
+.font-body    { font-family: 'Manrope', system-ui, sans-serif; }
+.font-mono    { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+
+/* ── Type utilities ─────────────────────── */
+.eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: .63rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: #86868B;
+    font-weight: 400;
 }
 
+.title-massive {
+    font-family: 'Outfit', 'Helvetica Neue', sans-serif;
+    font-weight: 900;
+    line-height: 0.92;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
+}
+
+/* ── Glass card ─────────────────────────── */
+.glass-card {
+    background: rgba(255, 255, 255, 0.70);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.04);
+    border-radius: 20px;
+    transition: box-shadow .3s ease, transform .3s ease;
+}
+.glass-card:hover {
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.09), 0 2px 8px rgba(0, 0, 0, 0.05);
+    transform: translateY(-3px);
+}
+
+/* ── Soft surface card ──────────────────── */
+.soft-card {
+    background: #ffffff;
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.04);
+    border-radius: 16px;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    transition: box-shadow .3s ease, transform .3s ease;
+}
+.soft-card:hover {
+    box-shadow: 0 10px 36px rgba(0, 0, 0, 0.09), 0 2px 8px rgba(0, 0, 0, 0.05);
+    transform: translateY(-2px);
+}
+
+/* ── Buttons ────────────────────────────── */
+.btn-dark {
+    padding: 0.85rem 1.75rem;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 600;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: #1D1D1F;
+    color: #fff;
+    border-radius: 9999px;
+    border: none;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.10);
+    transition: all 0.25s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.btn-dark:hover {
+    background: #333;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+    transform: translateY(-1px);
+}
+.btn-dark:active { transform: translateY(0); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); }
+
+.btn-white {
+    padding: 0.85rem 1.75rem;
+    font-family: 'Outfit', sans-serif;
+    font-weight: 600;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: #ffffff;
+    color: #1D1D1F;
+    border-radius: 9999px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.10);
+    transition: all 0.25s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.btn-white:hover {
+    background: #f5f5f7;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    transform: translateY(-1px);
+}
+
+/* ── Modal step fade (CSS only — no JS animation overhead) ─── */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.modal-step-fade { animation: fadeIn 0.16s ease both; }
+
+/* ── Ticker tape ────────────────────────── */
+@keyframes marquee {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+}
+.marquee-track {
+    display: flex;
+    gap: 3rem;
+    width: max-content;
+    animation: marquee 36s linear infinite;
+}
+
+/* ── Reveal on scroll ───────────────────── */
+.reveal {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity .9s cubic-bezier(.2,.7,.2,1), transform .9s cubic-bezier(.2,.7,.2,1);
+}
+.reveal.is-visible { opacity: 1; transform: translateY(0); }
+
+/* ── Image tile ─────────────────────────── */
+.tile { overflow: hidden; }
+.tile img { transition: transform 1.1s cubic-bezier(.2,.7,.2,1); }
+.tile:hover img { transform: scale(1.05); }
+
+/* ── Calendar ───────────────────────────── */
+.rdp { color: #1D1D1F; }
+.rdp-day_selected,
+.rdp-day_selected:hover,
+.rdp-day_selected:focus {
+    background-color: #1D1D1F !important;
+    color: #fff !important;
+    border-radius: 10px !important;
+    font-weight: 700;
+}
+.rdp-button { border-radius: 10px !important; }
+.rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
+    background-color: #F5F5F7 !important;
+}
+
+/* ── Shadcn CSS vars ────────────────────── */
 @layer base {
     :root {
         --background: 0 0% 100%;
-        --foreground: 0 0% 3.9%;
+        --foreground: 240 5% 12%;
         --card: 0 0% 100%;
-        --card-foreground: 0 0% 3.9%;
+        --card-foreground: 240 5% 12%;
         --popover: 0 0% 100%;
-        --popover-foreground: 0 0% 3.9%;
-        --primary: 0 0% 9%;
-        --primary-foreground: 0 0% 98%;
-        --secondary: 0 0% 96.1%;
-        --secondary-foreground: 0 0% 9%;
-        --muted: 0 0% 96.1%;
-        --muted-foreground: 0 0% 45.1%;
-        --accent: 0 0% 96.1%;
-        --accent-foreground: 0 0% 9%;
-        --destructive: 0 84.2% 60.2%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 89.8%;
-        --input: 0 0% 89.8%;
-        --ring: 0 0% 3.9%;
-        --chart-1: 12 76% 61%;
-        --chart-2: 173 58% 39%;
-        --chart-3: 197 37% 24%;
-        --chart-4: 43 74% 66%;
-        --chart-5: 27 87% 67%;
-        --radius: 0.5rem;
-    }
-    .dark {
-        --background: 0 0% 3.9%;
-        --foreground: 0 0% 98%;
-        --card: 0 0% 3.9%;
-        --card-foreground: 0 0% 98%;
-        --popover: 0 0% 3.9%;
-        --popover-foreground: 0 0% 98%;
-        --primary: 0 0% 98%;
-        --primary-foreground: 0 0% 9%;
-        --secondary: 0 0% 14.9%;
-        --secondary-foreground: 0 0% 98%;
-        --muted: 0 0% 14.9%;
-        --muted-foreground: 0 0% 63.9%;
-        --accent: 0 0% 14.9%;
-        --accent-foreground: 0 0% 98%;
-        --destructive: 0 62.8% 30.6%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 14.9%;
-        --input: 0 0% 14.9%;
-        --ring: 0 0% 83.1%;
-        --chart-1: 220 70% 50%;
-        --chart-2: 160 60% 45%;
-        --chart-3: 30 80% 55%;
-        --chart-4: 280 65% 60%;
-        --chart-5: 340 75% 55%;
+        --popover-foreground: 240 5% 12%;
+        --primary: 240 5% 12%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 240 4% 96%;
+        --secondary-foreground: 240 5% 12%;
+        --muted: 240 4% 95%;
+        --muted-foreground: 240 4% 46%;
+        --accent: 240 4% 95%;
+        --accent-foreground: 240 5% 12%;
+        --destructive: 0 84% 60%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 240 4% 90%;
+        --input: 240 4% 92%;
+        --ring: 240 5% 12%;
+        --radius: 1rem;
     }
 }
 
 @layer base {
-    * {
-        @apply border-border;
-    }
-    body {
-        @apply bg-background text-foreground;
-    }
+    * { @apply border-border; }
+    body { @apply bg-background text-foreground; }
 }
 
-@layer base {
-    [data-debug-wrapper="true"] {
-        display: contents !important;
-    }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-    [data-debug-wrapper="true"] > * {
-        margin-left: inherit;
-        margin-right: inherit;
-        margin-top: inherit;
-        margin-bottom: inherit;
-        padding-left: inherit;
-        padding-right: inherit;
-        padding-top: inherit;
-        padding-bottom: inherit;
-        column-gap: inherit;
-        row-gap: inherit;
-        gap: inherit;
-        border-left-width: inherit;
-        border-right-width: inherit;
-        border-top-width: inherit;
-        border-bottom-width: inherit;
-        border-left-style: inherit;
-        border-right-style: inherit;
-        border-top-style: inherit;
-        border-bottom-style: inherit;
-        border-left-color: inherit;
-        border-right-color: inherit;
-        border-top-color: inherit;
-        border-bottom-color: inherit;
-    }
-}
+section[id] { scroll-margin-top: 80px; }
