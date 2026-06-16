@@ -430,9 +430,11 @@ function HeroSection({ services, barbers, openBooking }) {
   const mTextRef  = useRef(null);  // paragraph — slides from left
 
   // Preload state
-  const [loaded,    setLoaded]    = useState(false); // all 65 frames decoded
-  const [gsapReady, setGsapReady] = useState(false); // GSAP pin spacer in place
-  const [progress,  setProgress]  = useState(0);     // 0–100 for the loader bar
+  const [loaded,        setLoaded]        = useState(false); // all 65 frames decoded
+  const [gsapReady,     setGsapReady]     = useState(false); // GSAP pin spacer in place
+  const [loaderExiting, setLoaderExiting] = useState(false); // curtain slide-up in progress
+  const [loaderVisible, setLoaderVisible] = useState(true);  // unmount when animation done
+  const [progress,      setProgress]      = useState(0);     // 0–100 for the loader bar
 
   // ── 1. PRELOAD ALL FRAMES (gate everything behind this) ──────────────────
   useEffect(() => {
@@ -459,13 +461,22 @@ function HeroSection({ services, barbers, openBooking }) {
     return () => { cancelled = true; };
   }, []);
 
-  // ── 2. Lock body scroll until GSAP pin spacer is in place ──────────────────
-  //    useLayoutEffect fires BEFORE paint — no frame is ever shown without the lock.
+  // ── 2. Lock body scroll until curtain is fully gone ────────────────────────
   useLayoutEffect(() => {
-    const allReady = loaded && gsapReady;
+    const allDone = loaded && gsapReady && !loaderVisible;
     window.scrollTo(0, 0);
-    document.body.style.overflow = allReady ? "" : "hidden";
+    document.body.style.overflow = allDone ? "" : "hidden";
     return () => { document.body.style.overflow = ""; };
+  }, [loaded, gsapReady, loaderVisible]);
+
+  // ── 2b. Trigger curtain exit once GSAP is ready ──────────────────────────
+  useEffect(() => {
+    if (!loaded || !gsapReady) return;
+    // Brief pause at 100% so the user registers the full bar, then slide up
+    const t1 = setTimeout(() => setLoaderExiting(true), 180);
+    // Unmount after slide completes (180ms delay + 950ms animation)
+    const t2 = setTimeout(() => setLoaderVisible(false), 1180);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [loaded, gsapReady]);
 
   // ── 3. Once loaded: draw frame 0 + init GSAP ScrollTrigger ───────────────
@@ -626,25 +637,34 @@ function HeroSection({ services, barbers, openBooking }) {
       {/* Dim overlay */}
       <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1 }} />
 
-      {/* ── LOADING OVERLAY — rendered via portal to document.body so it sits at
-               the ROOT stacking context (z:9999) and cannot be buried by the
-               site-body's z-[20], which beats the hero wrapper's z-1 context. ── */}
-      {(!loaded || !gsapReady) && createPortal(
+      {/* ── LOADING CURTAIN — portal to document.body (root stacking context).
+               Slides UP once GSAP pin spacer is confirmed in place.          ── */}
+      {loaderVisible && createPortal(
         <div
           data-testid="hero-loader"
           style={{
             position: "fixed", inset: 0, zIndex: 9999, background: "#000",
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1.5rem",
+            // Curtain slide-up exit
+            transform:  loaderExiting ? "translateY(-100%)" : "translateY(0)",
+            transition: loaderExiting ? "transform 0.95s cubic-bezier(0.76, 0, 0.24, 1)" : "none",
           }}
         >
-          <div className="font-mono uppercase text-white/70" style={{ fontSize: "0.7rem", letterSpacing: "0.42em" }}>
-            Loading Experience…
-          </div>
-          <div style={{ width: "min(60vw, 240px)", height: "2px", background: "rgba(255,255,255,0.12)", overflow: "hidden" }}>
-            <div style={{ width: `${progress}%`, height: "100%", background: "#fff", transition: "width 0.2s ease" }} />
-          </div>
-          <div className="font-mono text-white/40" style={{ fontSize: "0.62rem", letterSpacing: "0.2em" }}>
-            {progress}%
+          {/* Loading content — fades out just before curtain rises */}
+          <div style={{
+            display: "flex", flexDirection: "column", alignItems: "center", gap: "1.5rem",
+            opacity:    loaderExiting ? 0 : 1,
+            transition: loaderExiting ? "opacity 0.15s ease" : "none",
+          }}>
+            <div className="font-mono uppercase text-white/70" style={{ fontSize: "0.7rem", letterSpacing: "0.42em" }}>
+              Loading Experience…
+            </div>
+            <div style={{ width: "min(60vw, 240px)", height: "2px", background: "rgba(255,255,255,0.12)", overflow: "hidden" }}>
+              <div style={{ width: `${progress}%`, height: "100%", background: "#fff", transition: "width 0.2s ease" }} />
+            </div>
+            <div className="font-mono text-white/40" style={{ fontSize: "0.62rem", letterSpacing: "0.2em" }}>
+              {progress}%
+            </div>
           </div>
         </div>,
         document.body
@@ -663,13 +683,21 @@ function HeroSection({ services, barbers, openBooking }) {
           </div>
         </div>
 
-        {/* Wordmark */}
+        {/* Wordmark — fades + rises in as the curtain slides away */}
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 1.25rem" }}>
           <div style={{ width: "100%" }}>
             <h1
               data-testid="hero-title"
               className="font-display font-light uppercase text-white text-center select-none"
-              style={{ fontFamily: "'Outfit', sans-serif", fontSize: "clamp(7rem, 28vw, 26rem)", letterSpacing: "-0.045em", lineHeight: 0.82, fontWeight: 700 }}
+              style={{
+                fontFamily: "'Outfit', sans-serif",
+                fontSize: "clamp(7rem, 28vw, 26rem)",
+                letterSpacing: "-0.045em", lineHeight: 0.82, fontWeight: 700,
+                // Reveal animation: starts hidden, fades + rises when curtain exits
+                opacity:    loaderExiting ? 1 : 0,
+                transform:  loaderExiting ? "translateY(0)"    : "translateY(18px)",
+                transition: loaderExiting ? "opacity 0.9s ease 0.25s, transform 0.9s cubic-bezier(0.22,1,0.36,1) 0.25s" : "none",
+              }}
             >
               <span ref={wordLRef} style={{ display: "inline-block" }}>TZO</span>
               <span ref={wordRRef} style={{ display: "inline-block" }}>
@@ -681,7 +709,14 @@ function HeroSection({ services, barbers, openBooking }) {
             <div
               ref={subtitleRef}
               className="font-mono uppercase text-white/50"
-              style={{ marginTop: "0.75rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "1rem", fontSize: "0.7rem", letterSpacing: "0.42em" }}
+              style={{
+                marginTop: "0.75rem", display: "flex", alignItems: "center",
+                justifyContent: "center", gap: "1rem", fontSize: "0.7rem", letterSpacing: "0.42em",
+                // Slightly later stagger than the title
+                opacity:    loaderExiting ? 1 : 0,
+                transform:  loaderExiting ? "translateY(0)"   : "translateY(12px)",
+                transition: loaderExiting ? "opacity 0.9s ease 0.42s, transform 0.9s cubic-bezier(0.22,1,0.36,1) 0.42s" : "none",
+              }}
             >
               <span style={{ display: "inline-block", width: "3rem", height: "1px", background: "rgba(255,255,255,0.2)" }} />
               BARBER · ATHENS
