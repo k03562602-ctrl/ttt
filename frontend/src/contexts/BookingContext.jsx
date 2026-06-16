@@ -1,4 +1,8 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
+import axios from "axios";
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND_URL}/api`;
 
 const BookingContext = createContext();
 
@@ -8,6 +12,15 @@ export function BookingProvider({ children }) {
   const [presetBarberId, setPresetBarberId] = useState("");
   const [presetDate, setPresetDate] = useState("");
   const [presetTime, setPresetTime] = useState("");
+
+  // Pre-fetch at app start so BookingModal has data the instant it opens
+  const [services, setServices] = useState([]);
+  const [barbers, setBarbers] = useState([]);
+
+  useEffect(() => {
+    axios.get(`${API}/services`).then((r) => setServices(r.data)).catch(() => {});
+    axios.get(`${API}/barbers`).then((r) => setBarbers(r.data)).catch(() => {});
+  }, []);
 
   // Accepts either a string serviceId (legacy) or an object { serviceId, barberId, date, time }
   const openBooking = (arg) => {
@@ -49,6 +62,8 @@ export function BookingProvider({ children }) {
         presetBarberId,
         presetDate,
         presetTime,
+        services,
+        barbers,
       }}
     >
       {children}

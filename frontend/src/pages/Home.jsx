@@ -457,9 +457,16 @@ function HeroSection({ services, barbers, openBooking }) {
     return () => { cancelled = true; };
   }, []);
 
-  // ── 2. Lock body scroll while loading ────────────────────────────────────
+  // ── 2. Lock body scroll while loading; force top on unlock ─────────────────
   useEffect(() => {
-    document.body.style.overflow = loaded ? "" : "hidden";
+    if (!loaded) {
+      window.scrollTo(0, 0);
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+      // Ensure we start at the very top once GSAP takes over
+      window.scrollTo(0, 0);
+    }
     return () => { document.body.style.overflow = ""; };
   }, [loaded]);
 
@@ -589,6 +596,8 @@ function HeroSection({ services, barbers, openBooking }) {
     }, sectionRef);
 
     ScrollTrigger.refresh();
+    // After GSAP adds its pin-spacer + recalculates positions, anchor to true top
+    window.scrollTo(0, 0);
 
     return () => {
       gsap.ticker.remove(tickerFn);
@@ -617,12 +626,14 @@ function HeroSection({ services, barbers, openBooking }) {
       {/* Dim overlay */}
       <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1 }} />
 
-      {/* ── LOADING OVERLAY — solid black, blocks interaction until frames ready ── */}
+      {/* ── LOADING OVERLAY — fixed, covers the ENTIRE page (including z-20 site-body)
+               until all frames are decoded. Prevents the -300vh margin from exposing
+               the site-body content before the GSAP pin spacer is in place. ── */}
       {!loaded && (
         <div
           data-testid="hero-loader"
           style={{
-            position: "absolute", inset: 0, zIndex: 5, background: "#000",
+            position: "fixed", inset: 0, zIndex: 100, background: "#000",
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1.5rem",
           }}
         >

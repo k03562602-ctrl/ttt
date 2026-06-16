@@ -28,10 +28,9 @@ function fmtDate(d) {
 }
 
 export default function BookingModal() {
-  const { isBookingOpen, closeBooking, presetServiceId, presetBarberId, presetDate, presetTime } = useBooking();
+  const { isBookingOpen, closeBooking, presetServiceId, presetBarberId, presetDate, presetTime,
+          services, barbers } = useBooking();
   const [step, setStep] = useState(0);
-  const [services, setServices] = useState([]);
-  const [barbers, setBarbers] = useState([]);
   const [serviceId, setServiceId] = useState("");
   const [barberId, setBarberId] = useState("");
   const [date, setDate] = useState(null);
@@ -54,10 +53,8 @@ export default function BookingModal() {
   }, [step, success]);
 
   useEffect(() => {
-    if (isBookingOpen) {
-      axios.get(`${API}/services`).then((r) => setServices(r.data)).catch(() => {});
-      axios.get(`${API}/barbers`).then((r) => setBarbers(r.data)).catch(() => {});
-    }
+    if (!isBookingOpen) return;
+    // data pre-loaded via BookingContext — nothing to fetch here
   }, [isBookingOpen]);
 
   // Apply preset service when modal opens with a recommended service
@@ -249,13 +246,20 @@ export default function BookingModal() {
 
                     {step === 0 && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5" data-testid="step-service">
-                        {services.map((s) => {
+                        {services.map((s, idx) => {
                           const sel = serviceId === s.id;
                           return (
                             <button
                               key={s.id}
                               data-testid={`pick-service-${s.id}`}
                               onClick={() => setServiceId(s.id)}
+                              style={{
+                                animationName: "fadeInUp",
+                                animationDuration: "0.32s",
+                                animationDelay: `${idx * 0.035}s`,
+                                animationFillMode: "both",
+                                animationTimingFunction: "cubic-bezier(0.2,0.7,0.2,1)",
+                              }}
                               className={`text-left rounded-2xl p-4 transition-all duration-200 ${
                                 sel
                                   ? "bg-[#1D1D1F] text-white shadow-[0_6px_20px_rgba(0,0,0,0.14)] scale-[1.02]"

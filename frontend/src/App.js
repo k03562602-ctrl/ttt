@@ -1,4 +1,5 @@
 import "@/App.css";
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Home from "@/pages/Home";
 import AdminLogin from "@/pages/AdminLogin";
@@ -7,6 +8,13 @@ import Layout from "@/components/Layout";
 import { BookingProvider } from "@/contexts/BookingContext";
 
 function App() {
+  useEffect(() => {
+    // Prevent browser from restoring a stale scroll position — the GSAP hero
+    // scrub must always start from the top.
+    if ("scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+  }, []);
   return (
     <BookingProvider>
       <div className="App">
